@@ -1,0 +1,36 @@
+<svg width="1200" height="700" viewBox="0 0 1200 700" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="700" fill="#F8E6CC"/>
+  <text x="80" y="90" fill="#6E3D2B" font-size="42" font-family="Arial, sans-serif" font-weight="700">Chai Empire Icon Set</text>
+  <g transform="translate(100 160)">
+    <circle cx="70" cy="70" r="66" fill="#F0B45A"/>
+    <text x="70" y="92" text-anchor="middle" fill="#6E3D2B" font-size="62" font-family="Arial, sans-serif">₹</text>
+  </g>
+  <g transform="translate(300 160)">
+    <circle cx="70" cy="70" r="66" fill="#79B76E"/>
+    <text x="70" y="92" text-anchor="middle" fill="#224B30" font-size="58" font-family="Arial, sans-serif">⚡</text>
+  </g>
+  <g transform="translate(500 160)">
+    <circle cx="70" cy="70" r="66" fill="#D96A43"/>
+    <text x="70" y="95" text-anchor="middle" fill="#FFF0D8" font-size="58" font-family="Arial, sans-serif">★</text>
+  </g>
+  <g transform="translate(700 160)">
+    <circle cx="70" cy="70" r="66" fill="#69A7D8"/>
+    <text x="70" y="95" text-anchor="middle" fill="#173E5A" font-size="58" font-family="Arial, sans-serif">☕</text>
+  </g>
+  <g transform="translate(900 160)">
+    <circle cx="70" cy="70" r="66" fill="#B376D6"/>
+    <text x="70" y="92" text-anchor="middle" fill="#3E214C" font-size="54" font-family="Arial, sans-serif">🏪</text>
+  </g>
+  <g transform="translate(190 400)">
+    <rect x="0" y="0" width="140" height="140" rx="34" fill="#FFF6E8" stroke="#D7A26C" stroke-width="8"/>
+    <text x="70" y="89" text-anchor="middle" fill="#6E3D2B" font-size="56" font-family="Arial, sans-serif">👥</text>
+  </g>
+  <g transform="translate(450 400)">
+    <rect x="0" y="0" width="140" height="140" rx="34" fill="#FFF6E8" stroke="#D7A26C" stroke-width="8"/>
+    <text x="70" y="89" text-anchor="middle" fill="#6E3D2B" font-size="56" font-family="Arial, sans-serif">⏫</text>
+  </g>
+  <g transform="translate(710 400)">
+    <rect x="0" y="0" width="140" height="140" rx="34" fill="#FFF6E8" stroke="#D7A26C" stroke-width="8"/>
+    <text x="70" y="89" text-anchor="middle" fill="#6E3D2B" font-size="56" font-family="Arial, sans-serif">🎁</text>
+  </g>
+</svg>

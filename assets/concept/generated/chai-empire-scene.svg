@@ -1,0 +1,31 @@
+<svg width="1536" height="1024" viewBox="0 0 1536 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1536" height="1024" fill="#F7D9A7"/>
+  <rect y="690" width="1536" height="334" fill="#D88C52"/>
+  <rect y="760" width="1536" height="264" fill="#C46E3E"/>
+  <circle cx="1280" cy="170" r="72" fill="#FFD36E"/>
+  <rect x="170" y="430" width="540" height="250" rx="18" fill="#C85C39"/>
+  <rect x="205" y="470" width="470" height="150" rx="12" fill="#F2D8A7"/>
+  <rect x="290" y="350" width="300" height="100" rx="16" fill="#6F3A28"/>
+  <text x="440" y="413" text-anchor="middle" fill="#FFE8BF" font-size="52" font-family="Arial, sans-serif" font-weight="700">CHAI EMPIRE</text>
+  <rect x="250" y="520" width="160" height="100" rx="10" fill="#8B4A2F"/>
+  <rect x="440" y="520" width="170" height="100" rx="10" fill="#8B4A2F"/>
+  <ellipse cx="850" cy="690" rx="360" ry="90" fill="#B55A35" opacity="0.35"/>
+  <ellipse cx="1040" cy="610" rx="120" ry="28" fill="#9C4F31" opacity="0.4"/>
+  <rect x="940" y="430" width="120" height="160" rx="16" fill="#F0B45A"/>
+  <rect x="965" y="390" width="70" height="70" rx="12" fill="#D96A43"/>
+  <rect x="908" y="590" width="185" height="22" rx="11" fill="#71402F"/>
+  <ellipse cx="1115" cy="635" rx="44" ry="18" fill="#7A432E"/>
+  <ellipse cx="1180" cy="637" rx="44" ry="18" fill="#7A432E"/>
+  <rect x="1120" y="490" width="78" height="135" rx="20" fill="#4A2A22"/>
+  <circle cx="1158" cy="455" r="32" fill="#F2B277"/>
+  <rect x="1140" y="520" width="36" height="92" rx="10" fill="#F6C14B"/>
+  <rect x="1270" y="500" width="80" height="120" rx="20" fill="#348A63"/>
+  <circle cx="1310" cy="465" r="32" fill="#E7A86A"/>
+  <rect x="1290" y="520" width="40" height="82" rx="10" fill="#76B66A"/>
+  <ellipse cx="1260" cy="635" rx="38" ry="16" fill="#7A432E"/>
+  <ellipse cx="1360" cy="635" rx="38" ry="16" fill="#7A432E"/>
+  <rect x="120" y="190" width="220" height="80" rx="20" fill="#FFE9C7" opacity="0.9"/>
+  <text x="230" y="240" text-anchor="middle" fill="#6F3A28" font-size="34" font-family="Arial, sans-serif" font-weight="700">2.5D SCENE</text>
+  <rect x="1160" y="180" width="260" height="95" rx="22" fill="#FFF2D6" opacity="0.94"/>
+  <text x="1290" y="235" text-anchor="middle" fill="#A34A31" font-size="32" font-family="Arial, sans-serif" font-weight="700">Roadside Stall Tier</text>
+</svg>

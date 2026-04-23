@@ -1,0 +1,29 @@
+{
+  "name": "chai-empire-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "test": "node --import tsx --test tests/**/*.test.js",
+    "export:web": "expo export --platform web",
+    "assets:generate": "python3 scripts/generate_brand_assets.py"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~5.0.5",
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "babel-preset-expo": "~13.0.0",
+    "expo": "~53.0.9",
+    "expo-status-bar": "~2.2.3",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "react-native": "0.79.6",
+    "react-native-web": "^0.20.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.6"
+  }
+}
