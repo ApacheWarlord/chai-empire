@@ -107,15 +107,6 @@ export default function App() {
     return [];
   }, [activeTab, menuItems, staffUnlocks, upgradeTracks]);
 
-  if (!isLoaded) {
-    return (
-      <SafeAreaView style={styles.loadingScreen}>
-        <StatusBar style="light" />
-        <Text style={styles.loadingText}>Heating the kettle...</Text>
-      </SafeAreaView>
-    );
-  }
-
   const nextVenue = venueProgress.next;
   const venueRequirements = nextVenue
     ? [
@@ -162,6 +153,15 @@ export default function App() {
     }
     prevVenueTierRef.current = state.venueTier;
   }, [state.venueTier, stats.venue.name]);
+
+  if (!isLoaded) {
+    return (
+      <SafeAreaView style={styles.loadingScreen}>
+        <StatusBar style="light" />
+        <Text style={styles.loadingText}>Heating the kettle...</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
