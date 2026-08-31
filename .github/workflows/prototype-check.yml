@@ -41,6 +41,19 @@ jobs:
           path: app/dist
           if-no-files-found: error
 
+      - name: Upload audit source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: chai-empire-audit-source
+          path: |
+            app/App.js
+            app/app.json
+            app/package.json
+            app/package-lock.json
+            app/src
+            app/tests
+          if-no-files-found: error
+
   android-apk:
     needs: prototype-check
     runs-on: ubuntu-latest
