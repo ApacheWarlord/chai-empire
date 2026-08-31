@@ -1,5 +1,5 @@
 import { customerTypes, gameEvents, menuItems, milestoneGoals, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
-import { createDailyObjectives } from './createInitialState';
+import { createDailyObjectives, createInitialDailyProgress } from './createInitialState';
 import { clamp } from '../utils/formatters';
 
 const TICK_SECONDS = 1;
@@ -59,16 +59,31 @@ const ensureDailyObjectives = (state) => {
       key: todayKey,
       claimedIds: [],
       objectives: createDailyObjectives(todayKey),
+      progress: createInitialDailyProgress(),
     },
   };
 };
 
-const getObjectiveMetricValue = (state, metric) => {
-  if (metric === 'upgradeCount') {
-    return Object.values(state.levels).reduce((sum, value) => sum + value, 0) + Math.max(0, state.unlockedMenu.length - 1) + (state.staffOwned.length - 1);
-  }
-  return state[metric] || 0;
+const getDailyProgress = (state) => state.dailyObjectives?.progress || createInitialDailyProgress();
+
+const addDailyProgress = (state, delta) => {
+  const safeState = ensureDailyObjectives(state);
+  const progress = getDailyProgress(safeState);
+  return {
+    ...safeState,
+    dailyObjectives: {
+      ...safeState.dailyObjectives,
+      progress: {
+        totalServed: progress.totalServed + (delta.totalServed || 0),
+        businessRevenue: progress.businessRevenue + (delta.businessRevenue || 0),
+        premiumServed: progress.premiumServed + (delta.premiumServed || 0),
+        upgradeCount: progress.upgradeCount + (delta.upgradeCount || 0),
+      },
+    },
+  };
 };
+
+const getObjectiveMetricValue = (state, metric) => getDailyProgress(state)[metric] || 0;
 
 const tutorialSteps = [
   {
@@ -120,6 +135,63 @@ export const getVenueProgress = (state) => {
   return { current, next, progress };
 };
 
+const getWeightedCustomerTypes = (state) => {
+  const featuredId = state.activeEvent?.featuredCustomerTypeId;
+  return customerTypes.map((customerType) => ({
+    customerType,
+    weight: Math.max(
+      1,
+      Math.round(customerType.arrivalWeight * (featuredId === customerType.id ? 1.85 : 1))
+    ),
+  }));
+};
+
+const getExpectedOrderProfile = (state, entries, qualityMultiplier, prepMultiplier, serviceMultiplier, rushBonus) => {
+  if (!entries.length) {
+    return { averagePayout: 0, averageServiceTime: 4 };
+  }
+
+  const weightedCustomers = getWeightedCustomerTypes(state);
+  const totalCustomerWeight = weightedCustomers.reduce((sum, entry) => sum + entry.weight, 0) || 1;
+  const eventPayoutMultiplier = 1 + (state.activeEvent?.payoutBoost || 0);
+
+  let weightedPayout = 0;
+  let weightedServiceTime = 0;
+
+  for (const { customerType, weight: customerWeight } of weightedCustomers) {
+    const weightedItems = entries.map((item) => ({
+      item,
+      weight: Math.max(1, Math.round(item.demandWeight * (customerType.preferences?.[item.id] || 1))),
+    }));
+    const totalItemWeight = weightedItems.reduce((sum, entry) => sum + entry.weight, 0) || 1;
+
+    const customerPayout = weightedItems.reduce(
+      (sum, entry) =>
+        sum +
+        entry.weight *
+          entry.item.price *
+          qualityMultiplier *
+          customerType.spendMultiplier *
+          eventPayoutMultiplier *
+          (1 + rushBonus.payoutBoost),
+      0
+    ) / totalItemWeight;
+
+    const customerServiceTime = weightedItems.reduce(
+      (sum, entry) => sum + entry.weight * (entry.item.serviceTime / (prepMultiplier * serviceMultiplier)),
+      0
+    ) / totalItemWeight;
+
+    weightedPayout += customerWeight * customerPayout;
+    weightedServiceTime += customerWeight * customerServiceTime;
+  }
+
+  return {
+    averagePayout: weightedPayout / totalCustomerWeight,
+    averageServiceTime: weightedServiceTime / totalCustomerWeight,
+  };
+};
+
 export const getDerivedStats = (state) => {
   const venue = getVenue(state);
   const unlockedMenuEntries = getUnlockedMenuEntries(state);
@@ -130,18 +202,19 @@ export const getDerivedStats = (state) => {
   const reputationBonus = state.levels.reputation * 0.04;
   const menuVarietyBonus = Math.max(0, unlockedMenuEntries.length - 1) * 0.06;
   const eventBoost = state.activeEvent ? state.activeEvent.arrivalBoost : 0;
-  const eventPayoutBoost = state.activeEvent ? state.activeEvent.payoutBoost || 0 : 0;
   const rushBonus = getRushBonus(state.heatMeter || 0);
   const arrivalPerMinute = venue.baseArrivalPerMinute * (1 + reputationBonus + menuVarietyBonus + eventBoost + rushBonus.arrivalBoost);
-  const averagePayout =
-    unlockedMenuEntries.reduce((sum, item) => sum + item.price * qualityMultiplier * (1 + eventPayoutBoost + rushBonus.payoutBoost), 0) /
-      Math.max(unlockedMenuEntries.length, 1) ||
-    0;
-  const averageServiceTime =
-    unlockedMenuEntries.reduce((sum, item) => sum + item.serviceTime / (prepMultiplier * serviceMultiplier), 0) /
-      Math.max(unlockedMenuEntries.length, 1) ||
-    4;
-  const coinsPerMinute = averageServiceTime > 0 ? (60 / averageServiceTime) * workerCount * averagePayout * 0.65 : 0;
+  const { averagePayout, averageServiceTime } = getExpectedOrderProfile(
+    state,
+    unlockedMenuEntries,
+    qualityMultiplier,
+    prepMultiplier,
+    serviceMultiplier,
+    rushBonus
+  );
+  const serviceCapacityPerMinute = averageServiceTime > 0 ? workerCount * (60 / averageServiceTime) : 0;
+  const expectedOrdersPerMinute = Math.min(arrivalPerMinute, serviceCapacityPerMinute);
+  const coinsPerMinute = expectedOrdersPerMinute * averagePayout;
 
   return {
     venue,
@@ -172,24 +245,10 @@ const randomWeightedItem = (entries) => {
   return entries[0];
 };
 
-const randomWeightedCustomerType = () => {
-  const total = customerTypes.reduce((sum, customerType) => sum + customerType.arrivalWeight, 0);
-  let roll = Math.random() * total;
-  for (const customerType of customerTypes) {
-    roll -= customerType.arrivalWeight;
-    if (roll <= 0) return customerType;
-  }
-  return customerTypes[0];
-};
-
 const randomWeightedCustomerTypeForState = (state) => {
-  const featuredId = state.activeEvent?.featuredCustomerTypeId;
-  const weightedCustomerTypes = customerTypes.map((customerType) => ({
+  const weightedCustomerTypes = getWeightedCustomerTypes(state).map(({ customerType, weight }) => ({
     ...customerType,
-    arrivalWeight: Math.max(
-      1,
-      Math.round(customerType.arrivalWeight * (featuredId === customerType.id ? 1.85 : 1))
-    ),
+    arrivalWeight: weight,
   }));
   const total = weightedCustomerTypes.reduce((sum, customerType) => sum + customerType.arrivalWeight, 0);
   let roll = Math.random() * total;
@@ -334,6 +393,11 @@ export const simulateTicks = (inputState, totalSeconds) => {
       bestServiceStreak,
       heatMeter,
     };
+    state = addDailyProgress(state, {
+      totalServed: servedCount,
+      businessRevenue: coinsGained,
+      premiumServed,
+    });
   }
 
   return state;
@@ -395,9 +459,7 @@ export const getMilestones = (state) =>
 export const getTutorialStep = (state) => {
   if (!state.tutorial?.active) return null;
   const dismissedIds = state.tutorial?.dismissedStepIds || [];
-  return (
-    tutorialSteps.find((step) => step.condition(state) && !dismissedIds.includes(step.id)) || null
-  );
+  return tutorialSteps.find((step) => step.condition(state) && !dismissedIds.includes(step.id)) || null;
 };
 
 export const getDailyObjectives = (state) => {
@@ -417,45 +479,57 @@ export const getDailyObjectives = (state) => {
 };
 
 export const buyTrackUpgrade = (state, trackId) => {
+  state = ensureDailyObjectives(state);
   const track = upgradeTracks.find((entry) => entry.id === trackId);
   if (!track) return state;
   const currentLevel = state.levels[trackId];
   if (currentLevel >= track.maxLevel) return state;
   const cost = getTrackCost(track, currentLevel);
   if (state.coins < cost) return state;
-  return {
-    ...state,
-    coins: state.coins - cost,
-    levels: { ...state.levels, [trackId]: currentLevel + 1 },
-  };
+  return addDailyProgress(
+    {
+      ...state,
+      coins: state.coins - cost,
+      levels: { ...state.levels, [trackId]: currentLevel + 1 },
+    },
+    { upgradeCount: 1 }
+  );
 };
 
 export const unlockStaff = (state, staffId) => {
+  state = ensureDailyObjectives(state);
   const staff = staffUnlocks.find((entry) => entry.id === staffId);
   if (!staff || state.staffOwned.includes(staff.workerCount)) return state;
   const stats = getDerivedStats(state);
   if (state.coins < staff.unlockCost || state.venueTier < staff.requiredVenue || staff.workerCount > stats.venue.workerCap) {
     return state;
   }
-  return {
-    ...state,
-    coins: state.coins - staff.unlockCost,
-    staffOwned: [...state.staffOwned, staff.workerCount],
-  };
+  return addDailyProgress(
+    {
+      ...state,
+      coins: state.coins - staff.unlockCost,
+      staffOwned: [...state.staffOwned, staff.workerCount],
+    },
+    { upgradeCount: 1 }
+  );
 };
 
 export const unlockMenuItem = (state, itemId) => {
+  state = ensureDailyObjectives(state);
   const item = menuItems.find((entry) => entry.id === itemId);
   if (!item || state.unlockedMenu.includes(item.id) || state.coins < item.unlockCost || item.venueMin > state.venueTier) {
     return state;
   }
   const stats = getDerivedStats(state);
   if (state.unlockedMenu.length >= stats.venue.menuCap) return state;
-  return {
-    ...state,
-    coins: state.coins - item.unlockCost,
-    unlockedMenu: [...state.unlockedMenu, item.id],
-  };
+  return addDailyProgress(
+    {
+      ...state,
+      coins: state.coins - item.unlockCost,
+      unlockedMenu: [...state.unlockedMenu, item.id],
+    },
+    { upgradeCount: 1 }
+  );
 };
 
 export const unlockNextVenue = (state) => {
@@ -511,15 +585,24 @@ export const claimOfflineProgress = (state, elapsedMs) => {
   state = ensureDailyObjectives(state);
   const elapsedMinutes = Math.min(OFFLINE_CAP_MINUTES, Math.floor(elapsedMs / 60000));
   if (elapsedMinutes <= 0) return { state, offlineCoins: 0 };
-  const cpm = state.cpmWindow.reduce((sum, value) => sum + value, 0) || getDerivedStats(state).coinsPerMinute;
-  const averageCpm = cpm / Math.max(1, Math.min(state.cpmWindow.length, 60) / 60);
+
+  const recentSamples = state.cpmWindow.filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+  const averageCpm = recentSamples.length
+    ? (recentSamples.reduce((sum, value) => sum + value, 0) * 60) / recentSamples.length
+    : getDerivedStats(state).coinsPerMinute;
   const offlineCoins = Math.round(averageCpm * elapsedMinutes * OFFLINE_EFFICIENCY);
-  return {
-    offlineCoins,
-    state: {
+
+  const nextState = addDailyProgress(
+    {
       ...state,
       coins: state.coins + offlineCoins,
       lifetimeCoins: state.lifetimeCoins + offlineCoins,
     },
+    { businessRevenue: offlineCoins }
+  );
+
+  return {
+    offlineCoins,
+    state: nextState,
   };
 };
