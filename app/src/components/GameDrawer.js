@@ -15,6 +15,8 @@ const rushTiers = [
   { threshold: 85, label: 'PEAK RUSH', detail: '+18% payout · +12% arrivals' },
 ];
 
+const clamp01 = (value) => Math.max(0, Math.min(1, Number.isFinite(value) ? value : 0));
+
 export function GameDrawer({
   panel,
   onClose,
@@ -80,6 +82,9 @@ function MissionsPanel({ objectives, onClaim }) {
               style={[styles.actionButton, (!objective.complete || objective.claimed) && styles.actionButtonDisabled]}
               disabled={!objective.complete || objective.claimed}
               onPress={() => onClaim(objective.id)}
+              accessibilityRole="button"
+              accessibilityLabel={`${objective.claimed ? 'Claimed' : objective.complete ? 'Claim' : 'In progress'} ${objective.label}`}
+              accessibilityState={{ disabled: !objective.complete || objective.claimed }}
             >
               <Text style={styles.actionText}>{objective.claimed ? 'CLAIMED' : objective.complete ? 'CLAIM' : 'IN PROGRESS'}</Text>
             </TouchableOpacity>
@@ -92,9 +97,16 @@ function MissionsPanel({ objectives, onClaim }) {
 
 function MilestonesPanel({ milestones }) {
   const complete = milestones.filter((milestone) => milestone.complete).length;
+  const nextMilestone = milestones
+    .filter((milestone) => !milestone.complete)
+    .sort((a, b) => b.progress - a.progress)[0];
+
   return (
     <View style={styles.stack}>
-      <SummaryBanner label="EMPIRE RECORD" value={`${complete}/${milestones.length} COMPLETE`} />
+      <SummaryBanner
+        label={nextMilestone ? `NEXT · ${nextMilestone.label.toUpperCase()}` : 'EMPIRE RECORD COMPLETE'}
+        value={`${complete}/${milestones.length} DONE`}
+      />
       {milestones.map((milestone) => (
         <View key={milestone.id} style={[styles.card, milestone.complete && styles.cardComplete]}>
           <View style={styles.cardTopRow}>
@@ -102,7 +114,10 @@ function MilestonesPanel({ milestones }) {
             <Text style={styles.status}>{milestone.complete ? '✓ DONE' : `${Math.round(milestone.progress * 100)}%`}</Text>
           </View>
           <Progress value={milestone.progress} complete={milestone.complete} />
-          <Text style={styles.muted}>{milestone.current}/{milestone.target}</Text>
+          <View style={styles.cardBottomRow}>
+            <Text style={styles.muted}>{milestone.current}/{milestone.target}</Text>
+            {!milestone.complete ? <Text style={styles.remaining}>{Math.max(0, milestone.target - milestone.current)} TO GO</Text> : null}
+          </View>
         </View>
       ))}
     </View>
@@ -111,15 +126,53 @@ function MilestonesPanel({ milestones }) {
 
 function RushPanel({ state, stats }) {
   const heat = Math.round(state.heatMeter || 0);
+  const queuePressure = clamp01(state.queue.length / Math.max(1, stats.queueCapacity));
+  const serviceCapacityPerMinute = stats.averageServiceTime > 0
+    ? stats.workerCount * (60 / stats.averageServiceTime)
+    : 0;
+  const demandRatio = stats.arrivalPerMinute > 0 ? serviceCapacityPerMinute / stats.arrivalPerMinute : 1;
+  const serviceLimited = demandRatio < 1.05;
+  const pressureHot = queuePressure >= 0.7 || serviceLimited;
+
+  let advice = 'Your stall has healthy service headroom. Growth upgrades can safely push more traffic.';
+  if (queuePressure >= 0.7) {
+    advice = 'Queue pressure is high. Prioritize stove speed or another worker before pushing reputation.';
+  } else if (serviceLimited) {
+    advice = 'Service capacity is close to incoming demand. A rush can overwhelm the stall, so speed or staff is the safest buy.';
+  } else if (demandRatio > 1.8) {
+    advice = 'You have lots of spare serving capacity. Reputation, menu variety, and venue growth will use it better.';
+  }
+
   return (
     <View style={styles.stack}>
       <SummaryBanner label={stats.rushBonus.label.toUpperCase()} value={`${heat}% HEAT`} hot={heat >= 55} />
+
+      <View style={styles.card}>
+        <Text style={styles.sectionLabel}>STALL OPERATIONS</Text>
+        <View style={styles.metricGridLight}>
+          <LightMetric label="ARRIVALS / MIN" value={stats.arrivalPerMinute.toFixed(1)} />
+          <LightMetric label="CAPACITY / MIN" value={serviceCapacityPerMinute.toFixed(1)} />
+          <LightMetric label="QUEUE LOAD" value={`${state.queue.length}/${stats.queueCapacity}`} />
+          <LightMetric label="WORKERS" value={stats.workerCount} />
+        </View>
+        <View style={styles.pressureLabelRow}>
+          <Text style={styles.pressureLabel}>QUEUE PRESSURE</Text>
+          <Text style={[styles.pressureValue, pressureHot && styles.pressureValueHot]}>{Math.round(queuePressure * 100)}%</Text>
+        </View>
+        <Progress value={queuePressure} danger={pressureHot} />
+        <View style={[styles.adviceBox, pressureHot && styles.adviceBoxHot]}>
+          <Text style={styles.adviceTitle}>{serviceLimited ? 'BOTTLENECK WATCH' : 'CAPACITY HEALTHY'}</Text>
+          <Text style={styles.adviceText}>{advice}</Text>
+        </View>
+      </View>
+
       <View style={styles.metricGrid}>
         <Metric label="CURRENT STREAK" value={state.serviceStreak || 0} />
         <Metric label="BEST STREAK" value={state.bestServiceStreak || 0} />
         <Metric label="MOOD" value={formatPercent(state.satisfaction)} />
         <Metric label="AVG TICKET" value={formatCoins(stats.averagePayout)} />
       </View>
+
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>RUSH LADDER</Text>
         {rushTiers.map((tier) => {
@@ -142,6 +195,7 @@ function RushPanel({ state, stats }) {
 }
 
 function SettingsPanel({ state, stats, venueProgress, onReset }) {
+  const nextVenueProgress = venueProgress.next ? Math.round(clamp01(venueProgress.progress) * 100) : 100;
   return (
     <View style={styles.stack}>
       <SummaryBanner label="CURRENT STALL" value={`TIER ${state.venueTier} · ${stats.venue.name.toUpperCase()}`} />
@@ -152,11 +206,17 @@ function SettingsPanel({ state, stats, venueProgress, onReset }) {
         <SettingRow label="Offline cap" value="2 hours" />
         <SettingRow label="Offline efficiency" value="20%" />
         <SettingRow label="Next venue" value={venueProgress.next?.name || 'Empire complete'} />
+        <SettingRow label="Venue progress" value={`${nextVenueProgress}%`} />
       </View>
       <View style={styles.warningCard}>
         <Text style={styles.warningTitle}>RESET LOCAL EMPIRE</Text>
         <Text style={styles.warningText}>This removes the local save from this device and starts again with a roadside stall.</Text>
-        <TouchableOpacity style={styles.resetButton} onPress={onReset} accessibilityRole="button">
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={onReset}
+          accessibilityRole="button"
+          accessibilityLabel="Reset local Chai Empire save"
+        >
           <Text style={styles.resetText}>RESET SAVE</Text>
         </TouchableOpacity>
       </View>
@@ -182,6 +242,15 @@ function Metric({ label, value }) {
   );
 }
 
+function LightMetric({ label, value }) {
+  return (
+    <View style={styles.lightMetric}>
+      <Text style={styles.lightMetricLabel}>{label}</Text>
+      <Text style={styles.lightMetricValue}>{value}</Text>
+    </View>
+  );
+}
+
 function SettingRow({ label, value }) {
   return (
     <View style={styles.settingRow}>
@@ -191,11 +260,18 @@ function SettingRow({ label, value }) {
   );
 }
 
-function Progress({ value, complete = false }) {
-  const clamped = Math.max(0, Math.min(1, value || 0));
+function Progress({ value, complete = false, danger = false }) {
+  const clamped = clamp01(value);
   return (
     <View style={styles.progressTrack}>
-      <View style={[styles.progressFill, complete && styles.progressComplete, { width: `${clamped * 100}%` }]} />
+      <View
+        style={[
+          styles.progressFill,
+          complete && styles.progressComplete,
+          danger && styles.progressDanger,
+          { width: `${clamped * 100}%` },
+        ]}
+      />
     </View>
   );
 }
@@ -215,7 +291,7 @@ const C = {
 
 const styles = StyleSheet.create({
   shell: {
-    maxHeight: 390,
+    maxHeight: 430,
     backgroundColor: C.ink,
     borderWidth: 4,
     borderColor: C.wood2,
@@ -254,9 +330,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   summaryHot: { backgroundColor: '#7A2D13', borderColor: C.orange },
-  summaryLabel: { color: '#FFF1C6', fontSize: 9, fontWeight: '900' },
+  summaryLabel: { color: '#FFF1C6', fontSize: 8.5, fontWeight: '900', flex: 1 },
   summaryValue: { color: C.gold, fontSize: 10, fontWeight: '900' },
   card: { backgroundColor: '#F2D99D', borderWidth: 3, borderColor: '#7A481E', padding: 8 },
   cardReady: { borderColor: C.green, backgroundColor: '#F5E6B5' },
@@ -267,9 +344,11 @@ const styles = StyleSheet.create({
   status: { color: '#397619', fontSize: 9, fontWeight: '900' },
   cardBottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 },
   muted: { color: '#5B482C', fontSize: 8, fontWeight: '800' },
+  remaining: { color: '#8A5A23', fontSize: 7, fontWeight: '900' },
   progressTrack: { height: 9, backgroundColor: '#5A4938', borderWidth: 2, borderColor: '#2E1B0D', marginTop: 7 },
   progressFill: { height: '100%', backgroundColor: C.green2 },
   progressComplete: { backgroundColor: C.gold },
+  progressDanger: { backgroundColor: C.orange },
   actionButton: { backgroundColor: C.green, borderWidth: 2, borderColor: '#315912', paddingHorizontal: 9, paddingVertical: 5 },
   actionButtonDisabled: { backgroundColor: '#776958', borderColor: '#554B3F' },
   actionText: { color: '#FFF4CB', fontSize: 7, fontWeight: '900' },
@@ -277,7 +356,19 @@ const styles = StyleSheet.create({
   metric: { width: '48.5%', backgroundColor: '#3A210F', borderWidth: 3, borderColor: C.wood2, padding: 8 },
   metricLabel: { color: '#BE9D69', fontSize: 7, fontWeight: '900' },
   metricValue: { color: C.cream, fontSize: 16, fontWeight: '900', marginTop: 3 },
+  metricGridLight: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  lightMetric: { width: '48.5%', backgroundColor: '#E3C985', borderWidth: 2, borderColor: '#9B7135', padding: 6 },
+  lightMetricLabel: { color: '#6E5029', fontSize: 6.5, fontWeight: '900' },
+  lightMetricValue: { color: '#2E1B0D', fontSize: 12, fontWeight: '900', marginTop: 2 },
   sectionLabel: { color: '#6A471F', fontSize: 8, fontWeight: '900', letterSpacing: 1, marginBottom: 5 },
+  pressureLabelRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  pressureLabel: { color: '#6A471F', fontSize: 7, fontWeight: '900' },
+  pressureValue: { color: '#397619', fontSize: 8, fontWeight: '900' },
+  pressureValueHot: { color: '#A83B17' },
+  adviceBox: { marginTop: 8, padding: 7, backgroundColor: '#DCE4A0', borderWidth: 2, borderColor: '#75943A' },
+  adviceBoxHot: { backgroundColor: '#F2C28F', borderColor: '#C65A22' },
+  adviceTitle: { color: '#3D5E1A', fontSize: 7, fontWeight: '900' },
+  adviceText: { color: '#4E3A20', fontSize: 7.5, lineHeight: 11, fontWeight: '800', marginTop: 3 },
   tierRow: { flexDirection: 'row', gap: 8, alignItems: 'center', paddingVertical: 7, borderTopWidth: 1, borderColor: '#C9AF78' },
   tierRowActive: { backgroundColor: '#E9D18F' },
   tierThreshold: { width: 38, color: '#7A481E', fontSize: 10, fontWeight: '900' },
