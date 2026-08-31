@@ -17,7 +17,7 @@
       "backgroundColor": "#1C1208"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.chaiempire.game"
     },
     "android": {

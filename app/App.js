@@ -1,6 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
+  Animated,
   Image,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -31,6 +34,7 @@ const customerSprites = {
 };
 
 const getShortfall = (coins, cost) => Math.max(0, cost - coins);
+const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 
 export default function App() {
   const { width } = useWindowDimensions();
@@ -60,11 +64,12 @@ export default function App() {
     menuItems,
   } = useGameState();
 
-  const compact = width < 360;
+  const compact = width < 390;
   const queuePressure = state.queue.length / Math.max(1, stats.queueCapacity);
   const queuePreview = state.queue.slice(0, Math.min(5, stats.queueCapacity));
   const nextVenue = venueProgress.next;
-  const objective = dailyObjectives.find((item) => !item.claimed) || dailyObjectives[0];
+  const activeOrderCount = state.activeOrders.length;
+  const helperCount = Math.max(0, stats.workerCount - 1);
 
   const tabCards = useMemo(() => {
     if (activeTab === 'speed' || activeTab === 'quality') {
@@ -74,6 +79,21 @@ export default function App() {
     if (activeTab === 'menu') return menuItems;
     return [];
   }, [activeTab, menuItems, staffUnlocks, upgradeTracks]);
+
+  const confirmReset = () => {
+    const message = 'This erases the local Chai Empire save and starts a new stall.';
+    if (Platform.OS === 'web') {
+      if (typeof globalThis.confirm === 'function' && globalThis.confirm(`Reset Chai Empire?\n\n${message}`)) {
+        resetGame();
+      }
+      return;
+    }
+
+    Alert.alert('Reset Chai Empire?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reset', style: 'destructive', onPress: resetGame },
+    ]);
+  };
 
   if (!isLoaded) {
     return (
@@ -93,14 +113,14 @@ export default function App() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.hudRow}>
+        <View style={[styles.hudRow, compact && styles.hudRowCompact]}>
           <HudPanel flex={1.15} label="COINS" value={formatCoins(state.coins)} sub={`+${formatCoins(stats.coinsPerMinute)}/min`} icon="●" />
           <HudPanel flex={0.8} label="MOOD" value={formatPercent(state.satisfaction)} sub={bottleneck} icon="☺" />
-          <View style={[styles.pixelPanel, styles.rushPanel]}>
+          <View style={[styles.pixelPanel, styles.rushPanel, compact && styles.rushPanelCompact]}>
             <Text style={styles.hudLabel}>RUSH METER</Text>
             <View style={styles.rushRow}>
               <Text style={styles.rushCup}>☕</Text>
-              <PixelBar progress={(state.heatMeter || 0) / 100} danger={(state.heatMeter || 0) >= 70} />
+              <PixelBar progress={(state.heatMeter || 0) / 100} danger={(state.heatMeter || 0) >= 70} style={styles.rushBar} />
             </View>
             <Text style={styles.hudSub}>{stats.rushBonus.label.toUpperCase()}</Text>
           </View>
@@ -172,13 +192,24 @@ export default function App() {
                   <Text style={styles.jar}>▣</Text><Text style={styles.jar}>▣</Text><Text style={styles.jar}>▣</Text>
                 </View>
                 <View style={styles.workerRow}>
-                  <Sprite source={pixelSprites.owner} size={compact ? 58 : 66} />
+                  <Sprite source={pixelSprites.owner} size={compact ? 52 : 60} animated />
                   <View style={styles.kettleStation}>
                     <Text style={styles.steam}>≈</Text>
                     <Text style={styles.kettleEmoji}>♨</Text>
                     <Text style={styles.chaiTray}>▥▥▥</Text>
+                    <Text style={styles.brewingLabel}>{activeOrderCount ? `${activeOrderCount} BREWING` : 'READY'}</Text>
                   </View>
-                  {stats.workerCount > 1 ? <Sprite source={pixelSprites.helper} size={compact ? 56 : 64} /> : <View style={{ width: compact ? 56 : 64 }} />}
+                  <View style={styles.helperCluster}>
+                    {Array.from({ length: helperCount }).map((_, index) => (
+                      <Sprite
+                        key={`helper-${index}`}
+                        source={pixelSprites.helper}
+                        size={compact ? 36 : 42}
+                        animated
+                        delay={index * 110}
+                      />
+                    ))}
+                  </View>
                 </View>
               </View>
               <View style={styles.counterFront}>
@@ -187,15 +218,15 @@ export default function App() {
             </View>
 
             <View style={styles.queueRoad}>
-              {queuePreview.length ? queuePreview.map((customer) => {
+              {queuePreview.length ? queuePreview.map((customer, index) => {
                 const item = menuItems.find((entry) => entry.id === customer.itemId);
-                const patienceRatio = Math.max(0, Math.min(1, customer.patience / 26));
+                const patienceRatio = Math.max(0, Math.min(1, customer.patience / Math.max(1, customer.maxPatience || customer.patience || 1)));
                 return (
                   <View key={customer.id} style={styles.customerSlot}>
                     <View style={styles.orderBubble}>
                       <Text style={styles.orderBubbleText}>{item?.orderBubble || '☕'}</Text>
                     </View>
-                    <Sprite source={customerSprites[customer.customerTypeId] || pixelSprites.officeWorker} size={compact ? 42 : 48} />
+                    <Sprite source={customerSprites[customer.customerTypeId] || pixelSprites.officeWorker} size={compact ? 42 : 48} animated delay={index * 90} />
                     <View style={styles.patienceTrack}>
                       <View style={[styles.patienceFill, { width: `${patienceRatio * 100}%` }, patienceRatio < 0.35 && styles.patienceLow]} />
                     </View>
@@ -229,6 +260,9 @@ export default function App() {
               key={tab.id}
               style={[styles.tabButton, activeTab === tab.id && styles.tabButtonActive]}
               onPress={() => setActiveTab(tab.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: activeTab === tab.id }}
+              accessibilityLabel={`${tab.label} tab`}
             >
               <Text style={styles.tabIcon}>{tab.icon}</Text>
               <Text style={[styles.tabLabel, activeTab === tab.id && styles.tabLabelActive]}>{tab.label}</Text>
@@ -263,35 +297,46 @@ export default function App() {
           )}
         </View>
 
-        {objective ? (
-          <View style={styles.objectiveStrip}>
-            <View style={styles.objectiveIcon}><Text style={styles.objectiveIconText}>✓</Text></View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.objectiveLabel}>DAILY: {objective.label.toUpperCase()}</Text>
-              <PixelBar progress={objective.progress} />
-              <Text style={styles.objectiveProgress}>{objective.current}/{objective.target} · REWARD {formatCoins(objective.reward)}</Text>
+        <View style={styles.objectivesPanel}>
+          <Text style={styles.objectivesTitle}>DAILY MISSIONS</Text>
+          {dailyObjectives.map((objective) => (
+            <View key={objective.id} style={[styles.objectiveStrip, objective.complete && !objective.claimed && styles.objectiveStripReady]}>
+              <View style={styles.objectiveIcon}><Text style={styles.objectiveIconText}>{objective.claimed ? '✓' : '•'}</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.objectiveLabel}>{objective.label.toUpperCase()}</Text>
+                <PixelBar progress={objective.progress} />
+                <Text style={styles.objectiveProgress}>{objective.current}/{objective.target} · REWARD {formatCoins(objective.reward)}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.claimButton, (!objective.complete || objective.claimed) && styles.claimButtonDisabled]}
+                disabled={!objective.complete || objective.claimed}
+                onPress={() => claimObjective(objective.id)}
+                accessibilityRole="button"
+                accessibilityLabel={`Claim ${objective.label} reward`}
+                accessibilityState={{ disabled: !objective.complete || objective.claimed }}
+              >
+                <Text style={styles.claimText}>{objective.claimed ? 'DONE' : objective.complete ? 'CLAIM' : 'WAIT'}</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.claimButton, (!objective.complete || objective.claimed) && styles.claimButtonDisabled]}
-              disabled={!objective.complete || objective.claimed}
-              onPress={() => claimObjective(objective.id)}
-            >
-              <Text style={styles.claimText}>{objective.claimed ? 'DONE' : 'CLAIM'}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+          ))}
+        </View>
 
         <View style={styles.bottomNav}>
-          <BottomNav icon="☷" label="MISSIONS" />
-          <BottomNav icon="★" label="MILESTONES" />
+          <BottomNav icon="☷" label={`${dailyObjectives.filter((item) => !item.claimed).length} MISSIONS`} />
+          <BottomNav icon="★" label={`${state.serviceStreak} STREAK`} />
           <View style={styles.centerBadge}>
             <Text style={styles.centerBadgeCup}>☕</Text>
             <Text style={styles.centerBadgeText}>AUTO SERVING</Text>
           </View>
-          <BottomNav icon="⚡" label="RUSH" />
-          <TouchableOpacity style={styles.bottomNavItem} onLongPress={resetGame}>
-            <Text style={styles.bottomNavIcon}>⚙</Text>
-            <Text style={styles.bottomNavLabel}>SETTINGS</Text>
+          <BottomNav icon="⚡" label={`${Math.round(state.heatMeter || 0)}% RUSH`} />
+          <TouchableOpacity
+            style={styles.bottomNavItem}
+            onPress={confirmReset}
+            accessibilityRole="button"
+            accessibilityLabel="Reset game data"
+          >
+            <Text style={styles.bottomNavIcon}>↺</Text>
+            <Text style={styles.bottomNavLabel}>RESET</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -299,8 +344,34 @@ export default function App() {
   );
 }
 
-function Sprite({ source, size }) {
-  return <Image source={{ uri: source }} style={{ width: size, height: size * 1.55 }} resizeMode="contain" />;
+function Sprite({ source, size, animated = false, delay = 0 }) {
+  const bob = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!animated) return undefined;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.delay(delay),
+        Animated.timing(bob, { toValue: -3, duration: 320, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(bob, { toValue: 0, duration: 320, useNativeDriver: USE_NATIVE_DRIVER }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [animated, bob, delay]);
+
+  const imageStyle = { width: size, height: size * 1.55 };
+  if (!animated) {
+    return <Image source={{ uri: source }} style={imageStyle} resizeMode="contain" />;
+  }
+
+  return (
+    <Animated.Image
+      source={{ uri: source }}
+      style={[imageStyle, { transform: [{ translateY: bob }] }]}
+      resizeMode="contain"
+    />
+  );
 }
 
 function HudPanel({ label, value, sub, icon, flex }) {
@@ -316,10 +387,10 @@ function HudPanel({ label, value, sub, icon, flex }) {
   );
 }
 
-function PixelBar({ progress, danger }) {
+function PixelBar({ progress, danger, style }) {
   const value = Math.max(0, Math.min(1, progress || 0));
   return (
-    <View style={styles.pixelBarTrack}>
+    <View style={[styles.pixelBarTrack, style]}>
       <View style={[styles.pixelBarFill, { width: `${value * 100}%` }, danger && styles.pixelBarDanger]} />
     </View>
   );
@@ -355,14 +426,20 @@ function UpgradeCard({ card, activeTab, state, stats, buyUpgrade, hireStaff, buy
   if (activeTab === 'menu') {
     const owned = state.unlockedMenu.includes(card.id);
     const locked = card.venueMin > state.venueTier;
-    const disabled = owned || locked || state.coins < card.unlockCost;
+    const menuFull = !owned && state.unlockedMenu.length >= stats.venue.menuCap;
+    const disabled = owned || locked || menuFull || state.coins < card.unlockCost;
+    const description = locked
+      ? `UNLOCKS AT TIER ${card.venueMin}`
+      : menuFull
+        ? `MENU FULL ${state.unlockedMenu.length}/${stats.venue.menuCap} · UPGRADE VENUE`
+        : `${formatCoins(card.price)} ORDER · ${card.serviceTime}s`;
     return (
       <PixelCard
         title={card.name}
         icon={card.orderBubble || '☕'}
         level={owned ? 'LIVE' : card.tag.toUpperCase()}
-        description={locked ? `UNLOCKS AT TIER ${card.venueMin}` : `${formatCoins(card.price)} ORDER · ${card.serviceTime}s`}
-        price={owned ? 'LIVE' : card.unlockCost ? formatCoins(card.unlockCost) : 'STARTER'}
+        description={description}
+        price={owned ? 'LIVE' : menuFull ? 'FULL' : card.unlockCost ? formatCoins(card.unlockCost) : 'STARTER'}
         disabled={disabled}
         onPress={() => buyMenuUnlock(card.id)}
       />
@@ -394,7 +471,7 @@ function PixelCard({ title, icon, level, description, price, disabled, onPress }
       <Text style={styles.upgradeIcon}>{icon}</Text>
       <Text style={styles.upgradeLevel}>{level}</Text>
       <Text numberOfLines={2} style={styles.upgradeDescription}>{description}</Text>
-      <TouchableOpacity disabled={disabled} onPress={onPress} style={[styles.priceButton, disabled && styles.priceButtonDisabled]}>
+      <TouchableOpacity disabled={disabled} onPress={onPress} style={[styles.priceButton, disabled && styles.priceButtonDisabled]} accessibilityRole="button" accessibilityState={{ disabled }}>
         <Text style={styles.priceText}>{price}</Text>
       </TouchableOpacity>
     </View>
@@ -478,8 +555,10 @@ const styles = StyleSheet.create({
   loadingTitle: { color: C.gold, fontWeight: '900', letterSpacing: 2, marginTop: 12 },
 
   hudRow: { flexDirection: 'row', gap: 6 },
+  hudRowCompact: { flexWrap: 'wrap' },
   pixelPanel: { backgroundColor: C.dark, borderWidth: 3, borderColor: C.wood2, padding: 6, minHeight: 70, ...pixelShadow },
   rushPanel: { flex: 1.1 },
+  rushPanelCompact: { flexBasis: '100%' },
   hudLabel: { color: C.gold, fontSize: 9, fontWeight: '900', letterSpacing: 1 },
   hudValueRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   hudIcon: { color: C.gold, fontSize: 17, fontWeight: '900' },
@@ -487,7 +566,8 @@ const styles = StyleSheet.create({
   hudSub: { color: C.green2, fontSize: 8, fontWeight: '800', marginTop: 2 },
   rushRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 },
   rushCup: { fontSize: 14 },
-  pixelBarTrack: { height: 9, flex: 1, borderWidth: 2, borderColor: '#140B05', backgroundColor: '#4B3728', padding: 1 },
+  pixelBarTrack: { height: 9, width: '100%', borderWidth: 2, borderColor: '#140B05', backgroundColor: '#4B3728', padding: 1 },
+  rushBar: { flex: 1, width: 'auto' },
   pixelBarFill: { height: '100%', backgroundColor: C.green2 },
   pixelBarDanger: { backgroundColor: C.orange },
 
@@ -523,10 +603,12 @@ const styles = StyleSheet.create({
   propShelf: { position: 'absolute', right: 12, top: 16, flexDirection: 'row', gap: 4, borderBottomWidth: 3, borderColor: C.wood2 },
   jar: { color: C.gold, fontSize: 15 },
   workerRow: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around' },
+  helperCluster: { minWidth: 76, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginLeft: -8 },
   kettleStation: { alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 10 },
   steam: { color: '#F0ECE0', fontSize: 30, lineHeight: 25, fontWeight: '900' },
   kettleEmoji: { color: '#C7C2B8', fontSize: 30 },
   chaiTray: { color: C.gold, fontWeight: '900', marginTop: -4 },
+  brewingLabel: { color: '#F4D98F', fontSize: 7, fontWeight: '900', marginTop: 2 },
   counterFront: { height: 42, backgroundColor: '#8A4B20', borderTopWidth: 4, borderColor: '#3B1C0A', alignItems: 'center', justifyContent: 'center' },
   counterText: { color: '#F4D98F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
   queueRoad: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 95, backgroundColor: C.road, borderTopWidth: 5, borderColor: '#B49A6E', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-evenly', paddingBottom: 5, paddingHorizontal: 4 },
@@ -561,7 +643,7 @@ const styles = StyleSheet.create({
   upgradeIcon: { fontSize: 34, marginVertical: 5 },
   upgradeLevel: { color: '#397619', fontSize: 10, fontWeight: '900' },
   upgradeDescription: { color: '#3F2B16', fontSize: 9, fontWeight: '800', textAlign: 'center', minHeight: 28, marginTop: 3 },
-  priceButton: { width: '100%', backgroundColor: C.green, borderWidth: 3, borderColor: '#2E5811', paddingVertical: 7, alignItems: 'center', marginTop: 7 },
+  priceButton: { width: '100%', minHeight: 42, backgroundColor: C.green, borderWidth: 3, borderColor: '#2E5811', paddingVertical: 9, alignItems: 'center', justifyContent: 'center', marginTop: 7 },
   priceButtonDisabled: { backgroundColor: '#665746', borderColor: '#3D3328' },
   priceText: { color: '#FFF3C8', fontSize: 11, fontWeight: '900' },
   venueCard: { backgroundColor: '#F2D99D', borderWidth: 4, borderColor: '#7A481E', padding: 11 },
@@ -574,12 +656,15 @@ const styles = StyleSheet.create({
   venueButton: { backgroundColor: C.orange, borderWidth: 3, borderColor: '#7E2E0C', padding: 9, alignItems: 'center', marginTop: 12 },
   venueButtonText: { color: '#FFF3C8', fontSize: 11, fontWeight: '900' },
 
-  objectiveStrip: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#F2D99D', borderWidth: 3, borderColor: '#7A481E', padding: 8 },
+  objectivesPanel: { gap: 6, backgroundColor: '#2C190D', borderWidth: 3, borderColor: C.wood2, padding: 7 },
+  objectivesTitle: { color: C.gold, fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  objectiveStrip: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#F2D99D', borderWidth: 3, borderColor: '#7A481E', padding: 7 },
+  objectiveStripReady: { borderColor: C.green2 },
   objectiveIcon: { width: 38, height: 38, backgroundColor: '#6B3B16', borderWidth: 3, borderColor: '#3F210C', alignItems: 'center', justifyContent: 'center' },
   objectiveIconText: { color: C.gold, fontSize: 20, fontWeight: '900' },
   objectiveLabel: { color: '#34200F', fontSize: 9, fontWeight: '900', marginBottom: 4 },
   objectiveProgress: { color: '#5A431F', fontSize: 8, fontWeight: '800', marginTop: 3 },
-  claimButton: { backgroundColor: C.green, borderWidth: 3, borderColor: '#315912', paddingHorizontal: 10, paddingVertical: 9 },
+  claimButton: { minWidth: 58, minHeight: 42, backgroundColor: C.green, borderWidth: 3, borderColor: '#315912', paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
   claimButtonDisabled: { opacity: 0.45 },
   claimText: { color: '#FFF4C9', fontSize: 9, fontWeight: '900' },
 

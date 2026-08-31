@@ -37,5 +37,5 @@ export const buildCorruptedSaveRecovery = (error, now = Date.now()) => ({
     corruptedAt: now,
     reason: String(error),
   },
-  keysToRemove: [SAVE_KEY, LEGACY_SAVE_KEY],
+  keysToRemove: [SAVE_KEY, LEGACY_SAVE_KEY, SAVE_BACKUP_KEY],
 });
