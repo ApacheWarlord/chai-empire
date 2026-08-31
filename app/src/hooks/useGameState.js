@@ -26,16 +26,41 @@ import {
   unlockStaff,
 } from '../game/simulation';
 
+const AUTOSAVE_INTERVAL_MS = 5000;
+
 export const useGameState = () => {
   const [state, setState] = useState(createInitialState());
   const [isLoaded, setIsLoaded] = useState(false);
   const [offlineCoins, setOfflineCoins] = useState(0);
   const [recoveryNotice, setRecoveryNotice] = useState('');
   const appState = useRef(AppState.currentState);
+  const stateRef = useRef(state);
+
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
+  const persistState = useCallback(async (snapshot) => {
+    if (!snapshot) return;
+    const serialized = JSON.stringify(serializeStateForSave(snapshot));
+    try {
+      const previousRaw = await AsyncStorage.getItem(SAVE_KEY);
+      if (previousRaw) {
+        await AsyncStorage.setItem(SAVE_BACKUP_KEY, previousRaw);
+      }
+      await AsyncStorage.multiSet([
+        [SAVE_KEY, serialized],
+        [LEGACY_SAVE_KEY, serialized],
+      ]);
+    } catch (error) {
+      console.warn('Failed to persist save data.', error);
+    }
+  }, []);
 
   useEffect(() => {
     const boot = async () => {
       const bootResult = await bootGameState({ storage: AsyncStorage });
+      stateRef.current = bootResult.state;
       setState(bootResult.state);
       setOfflineCoins(bootResult.offlineCoins);
       setRecoveryNotice(bootResult.recoveryNotice);
@@ -48,49 +73,55 @@ export const useGameState = () => {
   useEffect(() => {
     if (!isLoaded) return undefined;
     const timer = setInterval(() => {
-      setState((current) => ({ ...simulateTicks(current, 1), lastTickAt: Date.now(), venueUnlockedToast: null }));
+      setState((current) => {
+        const next = { ...simulateTicks(current, 1), lastTickAt: Date.now(), venueUnlockedToast: null };
+        stateRef.current = next;
+        return next;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, [isLoaded]);
 
   useEffect(() => {
-    if (!isLoaded) return;
+    if (!isLoaded) return undefined;
+    const autosaveTimer = setInterval(() => {
+      persistState(stateRef.current);
+    }, AUTOSAVE_INTERVAL_MS);
 
-    const persist = async () => {
-      const serialized = JSON.stringify(serializeStateForSave(state));
-      try {
-        const previousRaw = await AsyncStorage.getItem(SAVE_KEY);
-        if (previousRaw) {
-          await AsyncStorage.setItem(SAVE_BACKUP_KEY, previousRaw);
-        }
-        await AsyncStorage.multiSet([
-          [SAVE_KEY, serialized],
-          [LEGACY_SAVE_KEY, serialized],
-        ]);
-      } catch (error) {
-        console.warn('Failed to persist save data.', error);
-      }
+    return () => {
+      clearInterval(autosaveTimer);
+      persistState(stateRef.current);
     };
-
-    persist();
-  }, [isLoaded, state]);
+  }, [isLoaded, persistState]);
 
   useEffect(() => {
+    if (!isLoaded) return undefined;
+
     const sub = AppState.addEventListener('change', (nextStatus) => {
       if (appState.current.match(/inactive|background/) && nextStatus === 'active') {
         setState((current) => {
           const claimed = claimOfflineProgress(current, Date.now() - (current.lastTickAt || Date.now()));
+          const next = { ...claimed.state, lastTickAt: Date.now() };
+          stateRef.current = next;
           setOfflineCoins(claimed.offlineCoins);
-          return { ...claimed.state, lastTickAt: Date.now() };
+          return next;
         });
       }
+
       if (nextStatus.match(/inactive|background/)) {
-        setState((current) => ({ ...current, lastTickAt: Date.now() }));
+        setState((current) => {
+          const next = { ...current, lastTickAt: Date.now() };
+          stateRef.current = next;
+          persistState(next);
+          return next;
+        });
       }
+
       appState.current = nextStatus;
     });
+
     return () => sub.remove();
-  }, []);
+  }, [isLoaded, persistState]);
 
   const stats = useMemo(() => getDerivedStats(state), [state]);
   const venueProgress = useMemo(() => getVenueProgress(state), [state]);
@@ -110,6 +141,7 @@ export const useGameState = () => {
   const dismissRecoveryNotice = useCallback(() => setRecoveryNotice(''), []);
   const resetGame = useCallback(async () => {
     const fresh = createInitialState();
+    stateRef.current = fresh;
     setState(fresh);
     setOfflineCoins(0);
     setRecoveryNotice('');
