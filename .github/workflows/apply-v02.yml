@@ -25,10 +25,8 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
 
-      - name: Apply v0.2 patch
-        run: |
-          git apply --check .v02/v02.patch
-          git apply .v02/v02.patch
+      - name: Apply v0.2 integration
+        run: python3 .v02/apply_v02.py
 
       - name: Sync lockfile
         working-directory: app
@@ -46,7 +44,7 @@ jobs:
           rm -rf app/dist-v02-check
           git config user.name 'ApacheWarlord'
           git config user.email 'dhimanpulkit38496@gmail.com'
-          git rm .v02/v02.patch .v02/run.txt .github/workflows/apply-v02.yml
+          git rm .v02/v02.patch .v02/apply_v02.py .v02/run.txt .github/workflows/apply-v02.yml
           git add app/App.js app/app.json app/package.json app/package-lock.json app/src/game/createInitialState.js app/tests/stabilization.test.js
           git commit -m 'Integrate Chai Empire v0.2 gameplay shell'
           git push origin HEAD:codex/gameplay-v3
