@@ -1,4 +1,7 @@
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
+export const getLocalDayKey = (date = new Date()) => {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
 
 export const SAVE_SCHEMA_VERSION = 3;
 
@@ -9,7 +12,7 @@ const objectiveTemplates = [
   { id: 'unlock-items', label: 'Unlock upgrades or menu items', metric: 'upgradeCount', targets: [2, 3, 4], rewards: [85, 115, 145] },
 ];
 
-export const createDailyObjectives = (todayKey = getTodayKey()) => {
+export const createDailyObjectives = (todayKey = getLocalDayKey()) => {
   const daySeed = Number(todayKey.replace(/-/g, ''));
   return Array.from({ length: 3 }, (_, index) => {
     const template = objectiveTemplates[(daySeed + index) % objectiveTemplates.length];
@@ -59,7 +62,7 @@ export const createInitialState = () => ({
   heatMeter: 0,
   venueUnlockedToast: null,
   dailyObjectives: {
-    key: getTodayKey(),
+    key: getLocalDayKey(),
     claimedIds: [],
     objectives: createDailyObjectives(),
     progress: createInitialDailyProgress(),
