@@ -1,0 +1,1 @@
+Apply the staged Chai Empire v0.2 integration patch, validate tests and cross-platform Expo export, then commit the result.
