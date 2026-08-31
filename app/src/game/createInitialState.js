@@ -11,7 +11,8 @@ const objectiveTemplates = [
 
 export const createDailyObjectives = (todayKey = getTodayKey()) => {
   const daySeed = Number(todayKey.replace(/-/g, ''));
-  return objectiveTemplates.slice(0, 3).map((template, index) => {
+  return Array.from({ length: 3 }, (_, index) => {
+    const template = objectiveTemplates[(daySeed + index) % objectiveTemplates.length];
     const tier = (daySeed + index) % template.targets.length;
     return {
       id: `${todayKey}-${template.id}`,
