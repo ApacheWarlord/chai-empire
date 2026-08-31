@@ -32,6 +32,8 @@ jobs:
           git apply /tmp/app-ui.patch
           git apply --check .polish/logic-tests.patch
           git apply .polish/logic-tests.patch
+          git apply --check .polish/boot-test.patch
+          git apply .polish/boot-test.patch
 
       - name: Validate polished game
         working-directory: app
@@ -45,6 +47,6 @@ jobs:
           rm -rf app/dist-polish-check
           git config user.name 'ApacheWarlord'
           git config user.email 'dhimanpulkit38496@gmail.com'
-          git add app/App.js app/app.json app/src/game/simulation.js app/src/game/saveRecovery.js app/tests/stabilization.test.js app/tests/saveRecovery.test.js
+          git add app/App.js app/app.json app/src/game/simulation.js app/src/game/saveRecovery.js app/tests/stabilization.test.js app/tests/saveRecovery.test.js app/tests/bootGameState.test.js
           git commit -m 'Apply prototype polish audit fixes'
           git push origin HEAD:codex/pixel-art-gameplay-v2
