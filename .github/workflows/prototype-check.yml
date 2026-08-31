@@ -1,12 +1,12 @@
-name: Chai Empire Prototype Check
+name: Chai Empire v0.2 Prototype Check
 
 on:
   push:
     branches:
-      - codex/pixel-art-gameplay-v2
+      - codex/gameplay-v3
   pull_request:
     branches:
-      - codex/stabilize-game-loop
+      - codex/pixel-art-gameplay-v2
 
 jobs:
   prototype-check:
@@ -37,14 +37,14 @@ jobs:
       - name: Upload prototype bundles
         uses: actions/upload-artifact@v4
         with:
-          name: chai-empire-prototype-bundles
+          name: chai-empire-v02-bundles
           path: app/dist
           if-no-files-found: error
 
-      - name: Upload audit source snapshot
+      - name: Upload source snapshot
         uses: actions/upload-artifact@v4
         with:
-          name: chai-empire-audit-source
+          name: chai-empire-v02-source
           path: |
             app/App.js
             app/app.json
@@ -91,6 +91,6 @@ jobs:
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:
-          name: chai-empire-android-apk
+          name: chai-empire-v02-android-apk
           path: app/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
