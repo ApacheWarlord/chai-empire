@@ -26,7 +26,9 @@ jobs:
           cache-dependency-path: app/package-lock.json
 
       - name: Apply milestone reward changes
-        run: python3 .v02/milestone_rewards.py
+        run: |
+          python3 .v02/milestone_rewards.py
+          python3 .v02/fix_schema_fixture.py
 
       - name: Validate tests and all-platform export
         working-directory: app
@@ -40,7 +42,7 @@ jobs:
           rm -rf app/dist-milestone-check
           git config user.name 'ApacheWarlord'
           git config user.email 'dhimanpulkit38496@gmail.com'
-          git rm .v02/milestone_rewards.py .github/workflows/apply-milestone-rewards.yml
-          git add app/App.js app/src/components/GameDrawer.js app/src/data/gameData.js app/src/game/createInitialState.js app/src/game/simulation.js app/src/hooks/useGameState.js app/tests/stabilization.test.js
+          git rm .v02/milestone_rewards.py .v02/fix_schema_fixture.py .v02/run-milestones.txt .github/workflows/apply-milestone-rewards.yml
+          git add app/App.js app/src/components/GameDrawer.js app/src/data/gameData.js app/src/game/createInitialState.js app/src/game/simulation.js app/src/hooks/useGameState.js app/tests/stabilization.test.js app/tests/bootGameState.test.js
           git commit -m 'Add claimable Empire milestone rewards'
           git push origin HEAD:codex/gameplay-v3
