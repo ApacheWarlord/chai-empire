@@ -1,10 +1,10 @@
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
-export const SAVE_SCHEMA_VERSION = 2;
+export const SAVE_SCHEMA_VERSION = 3;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
-  { id: 'earn-coins', label: 'Earn revenue', metric: 'lifetimeCoins', targets: [350, 500, 700], rewards: [90, 120, 150] },
+  { id: 'earn-coins', label: 'Earn revenue', metric: 'businessRevenue', targets: [350, 500, 700], rewards: [90, 120, 150] },
   { id: 'sell-premium', label: 'Sell premium items', metric: 'premiumServed', targets: [3, 5, 7], rewards: [100, 130, 160] },
   { id: 'unlock-items', label: 'Unlock upgrades or menu items', metric: 'upgradeCount', targets: [2, 3, 4], rewards: [85, 115, 145] },
 ];
@@ -22,6 +22,13 @@ export const createDailyObjectives = (todayKey = getTodayKey()) => {
     };
   });
 };
+
+export const createInitialDailyProgress = () => ({
+  totalServed: 0,
+  businessRevenue: 0,
+  premiumServed: 0,
+  upgradeCount: 0,
+});
 
 export const createInitialState = () => ({
   coins: 80,
@@ -54,6 +61,7 @@ export const createInitialState = () => ({
     key: getTodayKey(),
     claimedIds: [],
     objectives: createDailyObjectives(),
+    progress: createInitialDailyProgress(),
   },
   tutorial: {
     active: true,
@@ -72,13 +80,23 @@ const sanitizeObjective = (objective) => {
   return {
     id: objective.id,
     label: objective.label,
-    metric: objective.metric,
+    metric: objective.metric === 'lifetimeCoins' ? 'businessRevenue' : objective.metric,
     target: Math.max(1, Math.floor(toFiniteNumber(objective.target, 1))),
     reward: Math.max(0, Math.floor(toFiniteNumber(objective.reward, 0))),
   };
 };
 
 const sanitizeCustomerList = (value) => (Array.isArray(value) ? value.filter((entry) => entry && typeof entry === 'object') : []);
+
+const sanitizeDailyProgress = (value) => {
+  const progress = value && typeof value === 'object' ? value : {};
+  return {
+    totalServed: Math.max(0, Math.floor(toFiniteNumber(progress.totalServed, 0))),
+    businessRevenue: Math.max(0, toFiniteNumber(progress.businessRevenue, 0)),
+    premiumServed: Math.max(0, Math.floor(toFiniteNumber(progress.premiumServed, 0))),
+    upgradeCount: Math.max(0, Math.floor(toFiniteNumber(progress.upgradeCount, 0))),
+  };
+};
 
 const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   const dailyObjectives = saved.dailyObjectives && typeof saved.dailyObjectives === 'object' ? saved.dailyObjectives : null;
@@ -104,7 +122,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     activeOrders: sanitizeCustomerList(saved.activeOrders),
     unlockedMenu: Array.isArray(saved.unlockedMenu) && saved.unlockedMenu.length ? saved.unlockedMenu.filter(Boolean) : base.unlockedMenu,
     staffOwned: Array.isArray(saved.staffOwned) && saved.staffOwned.length ? saved.staffOwned.filter((entry) => Number.isFinite(entry)) : base.staffOwned,
-    cpmWindow: Array.isArray(saved.cpmWindow) ? saved.cpmWindow.filter((entry) => entry && typeof entry === 'object') : base.cpmWindow,
+    cpmWindow: Array.isArray(saved.cpmWindow)
+      ? saved.cpmWindow.filter((entry) => typeof entry === 'number' && Number.isFinite(entry) && entry >= 0).slice(-60)
+      : base.cpmWindow,
     levels: {
       ...base.levels,
       ...(saved.levels && typeof saved.levels === 'object' ? saved.levels : {}),
@@ -118,6 +138,7 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
           objectives: Array.isArray(dailyObjectives.objectives)
             ? dailyObjectives.objectives.map(sanitizeObjective).filter(Boolean)
             : base.dailyObjectives.objectives,
+          progress: sanitizeDailyProgress(dailyObjectives.progress),
         }
       : base.dailyObjectives,
     tutorial: tutorial
