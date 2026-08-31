@@ -1,5 +1,0 @@
--  claimButton: { backgroundColor: C.green, borderWidth: 3, borderColor: '#315912', paddingHorizontal: 10, paddingVertical: 9 },
-+  claimButton: { minWidth: 58, minHeight: 42, backgroundColor: C.green, borderWidth: 3, borderColor: '#315912', paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center', justifyContent: 'center' },
-   claimButtonDisabled: { opacity: 0.45 },
-   claimText: { color: '#FFF4C9', fontSize: 9, fontWeight: '900' },
- 

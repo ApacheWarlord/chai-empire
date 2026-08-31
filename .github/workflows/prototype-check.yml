@@ -1,6 +1,9 @@
 name: Chai Empire Prototype Check
 
 on:
+  push:
+    branches:
+      - codex/pixel-art-gameplay-v2
   pull_request:
     branches:
       - codex/stabilize-game-loop
