@@ -34,9 +34,50 @@ jobs:
       - name: Export Android, iOS, and web bundles
         run: npx expo export --platform all --output-dir dist
 
-      - name: Upload prototype artifact
+      - name: Upload prototype bundles
         uses: actions/upload-artifact@v4
         with:
           name: chai-empire-prototype-bundles
           path: app/dist
+          if-no-files-found: error
+
+  android-apk:
+    needs: prototype-check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Android native project
+        env:
+          CI: '1'
+        run: npx expo prebuild --platform android --clean --no-install
+
+      - name: Build standalone Android APK
+        run: cd android && ./gradlew assembleRelease
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: chai-empire-android-apk
+          path: app/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
