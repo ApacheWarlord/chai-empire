@@ -191,6 +191,20 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   sanitized.premiumServed = Math.min(sanitized.premiumServed, sanitized.totalServed);
   sanitized.bestServiceStreak = Math.max(sanitized.bestServiceStreak, sanitized.serviceStreak);
 
+  const venue = venueTiers.find((entry) => entry.id === sanitized.venueTier) || venueTiers[0];
+  sanitized.staffOwned = sanitized.staffOwned.filter((workerCount) => workerCount <= venue.workerCap);
+  const menuAvailableAtVenue = sanitized.unlockedMenu.filter((itemId) => {
+    const item = menuItems.find((entry) => entry.id === itemId);
+    return item && item.venueMin <= sanitized.venueTier;
+  });
+  sanitized.unlockedMenu = [
+    'basic-chai',
+    ...menuAvailableAtVenue.filter((itemId) => itemId !== 'basic-chai'),
+  ].slice(0, venue.menuCap);
+  const allowedMenuIds = new Set(sanitized.unlockedMenu);
+  sanitized.queue = sanitized.queue.filter((customer) => allowedMenuIds.has(customer.itemId));
+  sanitized.activeOrders = sanitized.activeOrders.filter((order) => allowedMenuIds.has(order.itemId));
+
   return sanitized;
 };
 

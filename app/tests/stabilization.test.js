@@ -37,6 +37,26 @@ test('save hydration preserves numeric CPM samples and drops invalid entries', (
   assert.deepEqual(restored.cpmWindow, [0, 2, 3.5]);
 });
 
+test('save hydration enforces current venue worker and menu caps', () => {
+  const state = createInitialState();
+  const restored = hydrateState({
+    ...state,
+    venueTier: 1,
+    staffOwned: [1, 2, 3, 4],
+    unlockedMenu: ['basic-chai', 'masala-chai', 'biscuit-pack', 'coffee', 'kulhad-chai'],
+    queue: [
+      { id: 'valid', itemId: 'basic-chai', patience: 10 },
+      { id: 'future', itemId: 'coffee', patience: 10 },
+    ],
+    activeOrders: [{ id: 'future-order', itemId: 'kulhad-chai', remaining: 2 }],
+  });
+
+  assert.deepEqual(restored.staffOwned, [1, 2]);
+  assert.deepEqual(restored.unlockedMenu, ['basic-chai', 'masala-chai', 'biscuit-pack']);
+  assert.deepEqual(restored.queue.map((customer) => customer.id), ['valid']);
+  assert.deepEqual(restored.activeOrders, []);
+});
+
 test('offline earnings annualize partial CPM windows without auto-completing daily revenue', () => {
   const state = createInitialState();
   state.cpmWindow = Array(30).fill(2);

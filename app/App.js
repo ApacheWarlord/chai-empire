@@ -17,6 +17,9 @@ import { useGameState } from './src/hooks/useGameState';
 import { getTrackCost } from './src/game/simulation';
 import { formatCoins, formatPercent } from './src/utils/formatters';
 import { pixelSprites } from './src/data/pixelSprites';
+import { GameDrawer } from './src/components/GameDrawer';
+import { GameFeedback } from './src/components/GameFeedback';
+import { VenueDecor } from './src/components/VenueDecor';
 
 const TABS = [
   { id: 'speed', label: 'UPGRADES', icon: '☕' },
@@ -39,12 +42,14 @@ const USE_NATIVE_DRIVER = Platform.OS !== 'web';
 export default function App() {
   const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState('speed');
+  const [activePanel, setActivePanel] = useState(null);
   const {
     isLoaded,
     state,
     stats,
     venueProgress,
     recommendation,
+    milestones,
     dailyObjectives,
     tutorialStep,
     bottleneck,
@@ -153,6 +158,7 @@ export default function App() {
         ) : null}
 
         <View style={styles.sceneFrame}>
+          <GameFeedback state={state} />
           <View style={styles.bigSignOuter}>
             <View style={styles.bigSignInner}>
               <Text style={[styles.gameTitle, compact && styles.gameTitleCompact]}>CHAI EMPIRE</Text>
@@ -161,6 +167,7 @@ export default function App() {
           </View>
 
           <View style={styles.sceneSky}>
+            <VenueDecor tier={state.venueTier} />
             <View style={styles.sunPixel} />
             <View style={[styles.cloudPixel, { left: '10%', top: 20 }]} />
             <View style={[styles.cloudPixel, { right: '8%', top: 42, width: 46 }]} />
@@ -321,23 +328,47 @@ export default function App() {
           ))}
         </View>
 
+        <GameDrawer
+          panel={activePanel}
+          onClose={() => setActivePanel(null)}
+          dailyObjectives={dailyObjectives}
+          milestones={milestones}
+          state={state}
+          stats={stats}
+          venueProgress={venueProgress}
+          onClaimObjective={claimObjective}
+          onReset={confirmReset}
+        />
+
         <View style={styles.bottomNav}>
-          <BottomNav icon="☷" label={`${dailyObjectives.filter((item) => !item.claimed).length} MISSIONS`} />
-          <BottomNav icon="★" label={`${state.serviceStreak} STREAK`} />
+          <BottomNav
+            icon="☷"
+            label={`${dailyObjectives.filter((item) => !item.claimed).length} MISSIONS`}
+            onPress={() => setActivePanel(activePanel === 'missions' ? null : 'missions')}
+            active={activePanel === 'missions'}
+          />
+          <BottomNav
+            icon="★"
+            label={`${milestones.filter((item) => item.complete).length}/${milestones.length} GOALS`}
+            onPress={() => setActivePanel(activePanel === 'milestones' ? null : 'milestones')}
+            active={activePanel === 'milestones'}
+          />
           <View style={styles.centerBadge}>
             <Text style={styles.centerBadgeCup}>☕</Text>
             <Text style={styles.centerBadgeText}>AUTO SERVING</Text>
           </View>
-          <BottomNav icon="⚡" label={`${Math.round(state.heatMeter || 0)}% RUSH`} />
-          <TouchableOpacity
-            style={styles.bottomNavItem}
-            onPress={confirmReset}
-            accessibilityRole="button"
-            accessibilityLabel="Reset game data"
-          >
-            <Text style={styles.bottomNavIcon}>↺</Text>
-            <Text style={styles.bottomNavLabel}>RESET</Text>
-          </TouchableOpacity>
+          <BottomNav
+            icon="⚡"
+            label={`${Math.round(state.heatMeter || 0)}% RUSH`}
+            onPress={() => setActivePanel(activePanel === 'rush' ? null : 'rush')}
+            active={activePanel === 'rush'}
+          />
+          <BottomNav
+            icon="⚙"
+            label="SETTINGS"
+            onPress={() => setActivePanel(activePanel === 'settings' ? null : 'settings')}
+            active={activePanel === 'settings'}
+          />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -513,12 +544,18 @@ function Requirement({ label, current, target, format }) {
   );
 }
 
-function BottomNav({ icon, label }) {
+function BottomNav({ icon, label, onPress, active = false }) {
   return (
-    <View style={styles.bottomNavItem}>
+    <TouchableOpacity
+      style={[styles.bottomNavItem, active && styles.bottomNavItemActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+    >
       <Text style={styles.bottomNavIcon}>{icon}</Text>
       <Text style={styles.bottomNavLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -670,6 +707,7 @@ const styles = StyleSheet.create({
 
   bottomNav: { flexDirection: 'row', gap: 4, alignItems: 'stretch' },
   bottomNavItem: { flex: 1, minHeight: 54, backgroundColor: '#3A210F', borderWidth: 3, borderColor: '#6F3B16', alignItems: 'center', justifyContent: 'center' },
+  bottomNavItemActive: { backgroundColor: '#6A3B12', borderColor: C.gold },
   bottomNavIcon: { fontSize: 17, color: C.gold },
   bottomNavLabel: { color: '#D7B77F', fontSize: 6.5, fontWeight: '900', marginTop: 2 },
   centerBadge: { flex: 1.35, backgroundColor: C.orange, borderWidth: 3, borderColor: '#7E2E0C', alignItems: 'center', justifyContent: 'center' },
