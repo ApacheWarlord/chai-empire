@@ -1,4 +1,9 @@
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
+import { menuItems, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
+
+export const getLocalDayKey = (date = new Date()) => {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
 
 export const SAVE_SCHEMA_VERSION = 3;
 
@@ -9,7 +14,7 @@ const objectiveTemplates = [
   { id: 'unlock-items', label: 'Unlock upgrades or menu items', metric: 'upgradeCount', targets: [2, 3, 4], rewards: [85, 115, 145] },
 ];
 
-export const createDailyObjectives = (todayKey = getTodayKey()) => {
+export const createDailyObjectives = (todayKey = getLocalDayKey()) => {
   const daySeed = Number(todayKey.replace(/-/g, ''));
   return Array.from({ length: 3 }, (_, index) => {
     const template = objectiveTemplates[(daySeed + index) % objectiveTemplates.length];
@@ -59,7 +64,7 @@ export const createInitialState = () => ({
   heatMeter: 0,
   venueUnlockedToast: null,
   dailyObjectives: {
-    key: getTodayKey(),
+    key: getLocalDayKey(),
     claimedIds: [],
     objectives: createDailyObjectives(),
     progress: createInitialDailyProgress(),
@@ -71,6 +76,39 @@ export const createInitialState = () => ({
 });
 
 const toFiniteNumber = (value, fallback) => (typeof value === 'number' && Number.isFinite(value) ? value : fallback);
+
+const clampInteger = (value, fallback, min, max) =>
+  Math.min(max, Math.max(min, Math.floor(toFiniteNumber(value, fallback))));
+
+const validMenuIds = new Set(menuItems.map((item) => item.id));
+const validStaffCounts = new Set([1, ...staffUnlocks.map((staff) => staff.workerCount)]);
+const maxVenueTier = Math.max(...venueTiers.map((venue) => venue.id));
+
+const sanitizeLevels = (value, baseLevels) => {
+  const savedLevels = value && typeof value === 'object' ? value : {};
+  return upgradeTracks.reduce((levels, track) => {
+    levels[track.id] = clampInteger(savedLevels[track.id], baseLevels[track.id] || 0, 0, track.maxLevel);
+    return levels;
+  }, {});
+};
+
+const sanitizeUnlockedMenu = (value, baseMenu) => {
+  const source = Array.isArray(value) ? value : baseMenu;
+  const uniqueValid = [...new Set(source.filter((entry) => typeof entry === 'string' && validMenuIds.has(entry)))];
+  if (!uniqueValid.includes('basic-chai')) uniqueValid.unshift('basic-chai');
+  return uniqueValid.length ? uniqueValid : [...baseMenu];
+};
+
+const sanitizeStaffOwned = (value, baseStaff) => {
+  const source = Array.isArray(value) ? value : baseStaff;
+  const saved = new Set(source.filter((entry) => Number.isFinite(entry) && validStaffCounts.has(entry)));
+  const normalized = [1];
+  for (let workerCount = 2; validStaffCounts.has(workerCount); workerCount += 1) {
+    if (!saved.has(workerCount)) break;
+    normalized.push(workerCount);
+  }
+  return normalized;
+};
 
 const sanitizeObjective = (objective) => {
   if (!objective || typeof objective !== 'object') return null;
@@ -112,7 +150,7 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     premiumServed: Math.max(0, Math.floor(toFiniteNumber(saved.premiumServed, base.premiumServed))),
     satisfaction: Math.min(100, Math.max(0, toFiniteNumber(saved.satisfaction, base.satisfaction))),
     spawnProgress: Math.max(0, toFiniteNumber(saved.spawnProgress, base.spawnProgress)),
-    venueTier: Math.max(1, Math.floor(toFiniteNumber(saved.venueTier, base.venueTier))),
+    venueTier: clampInteger(saved.venueTier, base.venueTier, 1, maxVenueTier),
     eventCooldown: Math.max(0, Math.floor(toFiniteNumber(saved.eventCooldown, base.eventCooldown))),
     lastTickAt: Math.max(0, Math.floor(toFiniteNumber(saved.lastTickAt, base.lastTickAt))),
     recentCoins: Math.max(0, toFiniteNumber(saved.recentCoins, base.recentCoins)),
@@ -121,15 +159,12 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     heatMeter: Math.min(100, Math.max(0, toFiniteNumber(saved.heatMeter, base.heatMeter))),
     queue: sanitizeCustomerList(saved.queue),
     activeOrders: sanitizeCustomerList(saved.activeOrders),
-    unlockedMenu: Array.isArray(saved.unlockedMenu) && saved.unlockedMenu.length ? saved.unlockedMenu.filter(Boolean) : base.unlockedMenu,
-    staffOwned: Array.isArray(saved.staffOwned) && saved.staffOwned.length ? saved.staffOwned.filter((entry) => Number.isFinite(entry)) : base.staffOwned,
+    unlockedMenu: sanitizeUnlockedMenu(saved.unlockedMenu, base.unlockedMenu),
+    staffOwned: sanitizeStaffOwned(saved.staffOwned, base.staffOwned),
     cpmWindow: Array.isArray(saved.cpmWindow)
       ? saved.cpmWindow.filter((entry) => typeof entry === 'number' && Number.isFinite(entry) && entry >= 0).slice(-60)
       : base.cpmWindow,
-    levels: {
-      ...base.levels,
-      ...(saved.levels && typeof saved.levels === 'object' ? saved.levels : {}),
-    },
+    levels: sanitizeLevels(saved.levels, base.levels),
     dailyObjectives: dailyObjectives
       ? {
           ...base.dailyObjectives,

@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "node --import tsx --test tests/**/*.test.js",
+    "test": "node --import tsx --test tests/*.test.js",
     "export:web": "expo export --platform web",
     "assets:generate": "python3 scripts/generate_brand_assets.py"
   },

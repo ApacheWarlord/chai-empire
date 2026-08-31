@@ -1,5 +1,5 @@
 import { customerTypes, gameEvents, menuItems, milestoneGoals, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
-import { createDailyObjectives, createInitialDailyProgress } from './createInitialState';
+import { createDailyObjectives, createInitialDailyProgress, getLocalDayKey } from './createInitialState';
 import { clamp } from '../utils/formatters';
 
 const TICK_SECONDS = 1;
@@ -48,10 +48,8 @@ const getUnlockedMenuEntries = (state) => menuItems.filter((item) => state.unloc
 const getCustomerTypeById = (id) => customerTypes.find((customerType) => customerType.id === id) || customerTypes[0];
 const getLevelsTotal = (state) =>
   Object.values(state.levels).reduce((sum, value) => sum + value, 0) + state.unlockedMenu.length + (state.staffOwned.length - 1) * 3;
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
-
 const ensureDailyObjectives = (state) => {
-  const todayKey = getTodayKey();
+  const todayKey = getLocalDayKey();
   if (state.dailyObjectives?.key === todayKey) return state;
   return {
     ...state,
@@ -290,8 +288,8 @@ export const simulateTicks = (inputState, totalSeconds) => {
   let state = ensureDailyObjectives({ ...inputState, queue: [...inputState.queue], activeOrders: [...inputState.activeOrders] });
 
   for (let second = 0; second < totalSeconds; second += 1) {
-    const stats = getDerivedStats(state);
     state = tickEvent(maybeStartEvent(state));
+    const stats = getDerivedStats(state);
     const entries = getUnlockedMenuEntries(state);
 
     let spawnProgress = state.spawnProgress + stats.arrivalPerMinute / 60;
@@ -301,11 +299,13 @@ export const simulateTicks = (inputState, totalSeconds) => {
       if (queue.length < stats.queueCapacity) {
         const customerType = randomWeightedCustomerTypeForState(state);
         const item = pickItemForCustomerType(entries, customerType);
+        const maxPatience = Math.max(8, customerType.patience + (state.activeEvent?.patienceDelta || 0));
         queue.push({
           id: `${Date.now()}-${Math.random()}`,
           itemId: item.id,
           wait: 0,
-          patience: Math.max(8, customerType.patience + (state.activeEvent?.patienceDelta || 0)),
+          patience: maxPatience,
+          maxPatience,
           customerTypeId: customerType.id,
           customerEmoji: customerType.emoji,
           customerName: customerType.name,
@@ -592,17 +592,12 @@ export const claimOfflineProgress = (state, elapsedMs) => {
     : getDerivedStats(state).coinsPerMinute;
   const offlineCoins = Math.round(averageCpm * elapsedMinutes * OFFLINE_EFFICIENCY);
 
-  const nextState = addDailyProgress(
-    {
+  return {
+    offlineCoins,
+    state: {
       ...state,
       coins: state.coins + offlineCoins,
       lifetimeCoins: state.lifetimeCoins + offlineCoins,
     },
-    { businessRevenue: offlineCoins }
-  );
-
-  return {
-    offlineCoins,
-    state: nextState,
   };
 };
