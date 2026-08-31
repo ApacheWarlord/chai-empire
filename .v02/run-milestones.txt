@@ -1,1 +1,1 @@
-Run the staged milestone reward integration, validate the full test suite and all-platform Expo export, then commit only if green.
+Run the staged milestone reward integration with the schema-4 recovery fixture fix, validate all tests and all-platform Expo export, then commit only if green.
