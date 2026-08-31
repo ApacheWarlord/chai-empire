@@ -11,6 +11,7 @@ import { bootGameState } from '../game/bootGameState';
 import {
   buyTrackUpgrade,
   claimDailyObjective,
+  claimOfflineProgress,
   dismissTutorialStep,
   getBottleneck,
   getDailyObjectives,
