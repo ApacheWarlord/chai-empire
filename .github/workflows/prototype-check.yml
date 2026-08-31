@@ -31,12 +31,12 @@ jobs:
       - name: Run game tests
         run: npm test
 
-      - name: Export web prototype
-        run: npm run export:web -- --output-dir dist
+      - name: Export Android, iOS, and web bundles
+        run: npx expo export --platform all --output-dir dist
 
       - name: Upload prototype artifact
         uses: actions/upload-artifact@v4
         with:
-          name: chai-empire-web-prototype
+          name: chai-empire-prototype-bundles
           path: app/dist
           if-no-files-found: error
