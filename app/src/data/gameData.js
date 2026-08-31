@@ -281,9 +281,9 @@ export const gameEvents = [
 ];
 
 export const milestoneGoals = [
-  { id: 'serve-25', label: 'Serve 25 customers', target: 25, metric: 'totalServed' },
-  { id: 'earn-500', label: 'Earn ₹500 revenue', target: 500, metric: 'lifetimeCoins' },
-  { id: 'sell-10-premium', label: 'Sell 10 premium cups', target: 10, metric: 'premiumServed' },
+  { id: 'serve-25', label: 'Serve 25 customers', target: 25, metric: 'totalServed', reward: 120 },
+  { id: 'earn-500', label: 'Earn ₹500 revenue', target: 500, metric: 'lifetimeCoins', reward: 220 },
+  { id: 'sell-10-premium', label: 'Sell 10 premium cups', target: 10, metric: 'premiumServed', reward: 320 },
 ];
 
 export const customerTypes = [

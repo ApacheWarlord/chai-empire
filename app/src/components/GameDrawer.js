@@ -26,6 +26,7 @@ export function GameDrawer({
   stats,
   venueProgress,
   onClaimObjective,
+  onClaimMilestone,
   onReset,
 }) {
   if (!panel) return null;
@@ -51,7 +52,7 @@ export function GameDrawer({
         {panel === 'missions' ? (
           <MissionsPanel objectives={dailyObjectives} onClaim={onClaimObjective} />
         ) : null}
-        {panel === 'milestones' ? <MilestonesPanel milestones={milestones} /> : null}
+        {panel === 'milestones' ? <MilestonesPanel milestones={milestones} onClaim={onClaimMilestone} /> : null}
         {panel === 'rush' ? <RushPanel state={state} stats={stats} /> : null}
         {panel === 'settings' ? (
           <SettingsPanel state={state} stats={stats} venueProgress={venueProgress} onReset={onReset} />
@@ -95,8 +96,9 @@ function MissionsPanel({ objectives, onClaim }) {
   );
 }
 
-function MilestonesPanel({ milestones }) {
-  const complete = milestones.filter((milestone) => milestone.complete).length;
+function MilestonesPanel({ milestones, onClaim }) {
+  const claimed = milestones.filter((milestone) => milestone.claimed).length;
+  const claimable = milestones.filter((milestone) => milestone.complete && !milestone.claimed).length;
   const nextMilestone = milestones
     .filter((milestone) => !milestone.complete)
     .sort((a, b) => b.progress - a.progress)[0];
@@ -104,22 +106,38 @@ function MilestonesPanel({ milestones }) {
   return (
     <View style={styles.stack}>
       <SummaryBanner
-        label={nextMilestone ? `NEXT · ${nextMilestone.label.toUpperCase()}` : 'EMPIRE RECORD COMPLETE'}
-        value={`${complete}/${milestones.length} DONE`}
+        label={claimable ? `${claimable} EMPIRE REWARD${claimable === 1 ? '' : 'S'} READY` : nextMilestone ? `NEXT · ${nextMilestone.label.toUpperCase()}` : 'EMPIRE RECORD COMPLETE'}
+        value={`${claimed}/${milestones.length} CLAIMED`}
       />
-      {milestones.map((milestone) => (
-        <View key={milestone.id} style={[styles.card, milestone.complete && styles.cardComplete]}>
-          <View style={styles.cardTopRow}>
-            <Text style={styles.cardTitle}>{milestone.label.toUpperCase()}</Text>
-            <Text style={styles.status}>{milestone.complete ? '✓ DONE' : `${Math.round(milestone.progress * 100)}%`}</Text>
+      {milestones.map((milestone) => {
+        const ready = milestone.complete && !milestone.claimed;
+        return (
+          <View key={milestone.id} style={[styles.card, milestone.claimed && styles.cardComplete, ready && styles.cardReady]}>
+            <View style={styles.cardTopRow}>
+              <Text style={styles.cardTitle}>{milestone.label.toUpperCase()}</Text>
+              <Text style={styles.reward}>{formatCoins(milestone.reward)}</Text>
+            </View>
+            <Progress value={milestone.progress} complete={milestone.complete} />
+            <View style={styles.cardBottomRow}>
+              <Text style={styles.muted}>{milestone.current}/{milestone.target}</Text>
+              {ready ? (
+                <TouchableOpacity
+                  style={styles.actionButton}
+                  onPress={() => onClaim(milestone.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Claim ${milestone.label} milestone reward`}
+                >
+                  <Text style={styles.actionText}>CLAIM</Text>
+                </TouchableOpacity>
+              ) : milestone.claimed ? (
+                <Text style={styles.status}>✓ CLAIMED</Text>
+              ) : (
+                <Text style={styles.remaining}>{Math.max(0, milestone.target - milestone.current)} TO GO</Text>
+              )}
+            </View>
           </View>
-          <Progress value={milestone.progress} complete={milestone.complete} />
-          <View style={styles.cardBottomRow}>
-            <Text style={styles.muted}>{milestone.current}/{milestone.target}</Text>
-            {!milestone.complete ? <Text style={styles.remaining}>{Math.max(0, milestone.target - milestone.current)} TO GO</Text> : null}
-          </View>
-        </View>
-      ))}
+        );
+      })}
     </View>
   );
 }

@@ -62,6 +62,7 @@ export default function App() {
     buyMenuUnlock,
     buyVenue,
     claimObjective,
+    claimMilestone,
     dismissTutorial,
     resetGame,
     upgradeTracks,
@@ -337,6 +338,7 @@ export default function App() {
           stats={stats}
           venueProgress={venueProgress}
           onClaimObjective={claimObjective}
+          onClaimMilestone={claimMilestone}
           onReset={confirmReset}
         />
 
@@ -349,7 +351,9 @@ export default function App() {
           />
           <BottomNav
             icon="★"
-            label={`${milestones.filter((item) => item.complete).length}/${milestones.length} GOALS`}
+            label={milestones.some((item) => item.complete && !item.claimed)
+              ? `${milestones.filter((item) => item.complete && !item.claimed).length} REWARD READY`
+              : `${milestones.filter((item) => item.claimed).length}/${milestones.length} GOALS`}
             onPress={() => setActivePanel(activePanel === 'milestones' ? null : 'milestones')}
             active={activePanel === 'milestones'}
           />

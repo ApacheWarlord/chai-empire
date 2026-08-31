@@ -5,6 +5,7 @@ import { createInitialDailyProgress, createInitialState, getLocalDayKey, hydrate
 import {
   buyTrackUpgrade,
   claimDailyObjective,
+  claimMilestoneReward,
   claimOfflineProgress,
   getDailyObjectives,
   getDerivedStats,
@@ -176,4 +177,30 @@ test('an event that expires this tick no longer boosts the next arrival calculat
   assert.equal(next.activeEvent, null);
   assert.equal(next.queue.length, 0);
   assert.ok(next.spawnProgress < 1);
+});
+
+
+test('milestone rewards can be claimed exactly once without inflating lifetime revenue', () => {
+  const state = createInitialState();
+  state.totalServed = 25;
+  const startingCoins = state.coins;
+  const startingLifetime = state.lifetimeCoins;
+
+  const claimed = claimMilestoneReward(state, 'serve-25');
+  const duplicate = claimMilestoneReward(claimed, 'serve-25');
+
+  assert.equal(claimed.coins, startingCoins + 120);
+  assert.equal(claimed.lifetimeCoins, startingLifetime);
+  assert.deepEqual(claimed.claimedMilestoneIds, ['serve-25']);
+  assert.equal(duplicate.coins, claimed.coins);
+});
+
+test('save hydration removes duplicate and unknown milestone claims', () => {
+  const state = createInitialState();
+  const restored = hydrateState({
+    ...state,
+    claimedMilestoneIds: ['serve-25', 'serve-25', 'not-a-real-goal', 42],
+  });
+
+  assert.deepEqual(restored.claimedMilestoneIds, ['serve-25']);
 });

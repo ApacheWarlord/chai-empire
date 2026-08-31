@@ -11,6 +11,7 @@ import { bootGameState } from '../game/bootGameState';
 import {
   buyTrackUpgrade,
   claimDailyObjective,
+  claimMilestoneReward,
   claimOfflineProgress,
   dismissTutorialStep,
   getBottleneck,
@@ -136,6 +137,7 @@ export const useGameState = () => {
   const buyMenuUnlock = useCallback((id) => setState((current) => unlockMenuItem(current, id)), []);
   const buyVenue = useCallback(() => setState((current) => unlockNextVenue(current)), []);
   const claimObjective = useCallback((id) => setState((current) => claimDailyObjective(current, id)), []);
+  const claimMilestone = useCallback((id) => setState((current) => claimMilestoneReward(current, id)), []);
   const dismissTutorial = useCallback((id) => setState((current) => dismissTutorialStep(current, id)), []);
   const clearOfflineCoins = useCallback(() => setOfflineCoins(0), []);
   const dismissRecoveryNotice = useCallback(() => setRecoveryNotice(''), []);
@@ -167,6 +169,7 @@ export const useGameState = () => {
     buyMenuUnlock,
     buyVenue,
     claimObjective,
+    claimMilestone,
     dismissTutorial,
     resetGame,
     upgradeTracks,

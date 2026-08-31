@@ -451,10 +451,25 @@ export const getMilestones = (state) =>
     return {
       ...goal,
       current: value,
+      claimed: (state.claimedMilestoneIds || []).includes(goal.id),
       complete: value >= goal.target,
       progress: clamp(value / goal.target, 0, 1),
     };
   });
+
+export const claimMilestoneReward = (state, milestoneId) => {
+  const goal = milestoneGoals.find((entry) => entry.id === milestoneId);
+  if (!goal) return state;
+  const claimedIds = state.claimedMilestoneIds || [];
+  const value = state[goal.metric] || 0;
+  if (value < goal.target || claimedIds.includes(goal.id)) return state;
+
+  return {
+    ...state,
+    coins: state.coins + goal.reward,
+    claimedMilestoneIds: [...claimedIds, goal.id],
+  };
+};
 
 export const getTutorialStep = (state) => {
   if (!state.tutorial?.active) return null;

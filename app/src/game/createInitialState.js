@@ -1,11 +1,11 @@
-import { menuItems, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
+import { menuItems, milestoneGoals, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
 
 export const getLocalDayKey = (date = new Date()) => {
   const pad = (value) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 3;
+export const SAVE_SCHEMA_VERSION = 4;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -63,6 +63,7 @@ export const createInitialState = () => ({
   bestServiceStreak: 0,
   heatMeter: 0,
   venueUnlockedToast: null,
+  claimedMilestoneIds: [],
   dailyObjectives: {
     key: getLocalDayKey(),
     claimedIds: [],
@@ -81,6 +82,7 @@ const clampInteger = (value, fallback, min, max) =>
   Math.min(max, Math.max(min, Math.floor(toFiniteNumber(value, fallback))));
 
 const validMenuIds = new Set(menuItems.map((item) => item.id));
+const validMilestoneIds = new Set(milestoneGoals.map((goal) => goal.id));
 const validStaffCounts = new Set([1, ...staffUnlocks.map((staff) => staff.workerCount)]);
 const maxVenueTier = Math.max(...venueTiers.map((venue) => venue.id));
 
@@ -157,6 +159,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     serviceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.serviceStreak, base.serviceStreak))),
     bestServiceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.bestServiceStreak, base.bestServiceStreak))),
     heatMeter: Math.min(100, Math.max(0, toFiniteNumber(saved.heatMeter, base.heatMeter))),
+    claimedMilestoneIds: Array.isArray(saved.claimedMilestoneIds)
+      ? [...new Set(saved.claimedMilestoneIds.filter((id) => typeof id === 'string' && validMilestoneIds.has(id)))]
+      : base.claimedMilestoneIds,
     queue: sanitizeCustomerList(saved.queue),
     activeOrders: sanitizeCustomerList(saved.activeOrders),
     unlockedMenu: sanitizeUnlockedMenu(saved.unlockedMenu, base.unlockedMenu),
