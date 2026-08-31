@@ -9,6 +9,13 @@ const getUpgradeScore = (state) =>
   (state.unlockedMenu?.length || 0) +
   (state.staffOwned?.length || 0);
 
+const getRushTier = (heat) => {
+  if (heat >= 85) return { id: 'peak', label: 'PEAK RUSH', hot: true };
+  if (heat >= 55) return { id: 'hot', label: 'HOT STREAK', hot: true };
+  if (heat >= 25) return { id: 'warm', label: 'WARM FLOW', hot: false };
+  return { id: 'steady', label: 'STEADY SERVICE', hot: false };
+};
+
 export function GameFeedback({ state }) {
   const opacity = useRef(new Animated.Value(0)).current;
   const translateY = useRef(new Animated.Value(8)).current;
@@ -16,14 +23,18 @@ export function GameFeedback({ state }) {
   const prevLifetimeCoins = useRef(state.lifetimeCoins);
   const prevVenueTier = useRef(state.venueTier);
   const prevUpgradeScore = useRef(getUpgradeScore(state));
-  const [message, setMessage] = useState('');
+  const prevRushTier = useRef(getRushTier(state.heatMeter || 0).id);
+  const prevEventId = useRef(state.activeEvent?.id || null);
+  const prevBestStreak = useRef(state.bestServiceStreak || 0);
+  const [feedback, setFeedback] = useState({ message: '', tone: 'good' });
   const animation = useRef(null);
 
   const upgradeScore = useMemo(() => getUpgradeScore(state), [state.levels, state.staffOwned, state.unlockedMenu]);
+  const rushTier = useMemo(() => getRushTier(state.heatMeter || 0), [state.heatMeter]);
 
-  const showMessage = (nextMessage) => {
+  const showMessage = (nextMessage, tone = 'good') => {
     animation.current?.stop();
-    setMessage(nextMessage);
+    setFeedback({ message: nextMessage, tone });
     opacity.setValue(0);
     translateY.setValue(8);
     animation.current = Animated.sequence([
@@ -31,7 +42,7 @@ export function GameFeedback({ state }) {
         Animated.timing(opacity, { toValue: 1, duration: 120, useNativeDriver: USE_NATIVE_DRIVER }),
         Animated.timing(translateY, { toValue: 0, duration: 160, useNativeDriver: USE_NATIVE_DRIVER }),
       ]),
-      Animated.delay(650),
+      Animated.delay(760),
       Animated.parallel([
         Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: USE_NATIVE_DRIVER }),
         Animated.timing(translateY, { toValue: -8, duration: 220, useNativeDriver: USE_NATIVE_DRIVER }),
@@ -43,11 +54,19 @@ export function GameFeedback({ state }) {
   useEffect(() => {
     const servedDelta = state.totalServed - prevServed.current;
     const coinDelta = state.lifetimeCoins - prevLifetimeCoins.current;
+    const activeEventId = state.activeEvent?.id || null;
+    const bestStreak = state.bestServiceStreak || 0;
 
     if (state.venueTier > prevVenueTier.current) {
-      showMessage(`NEW VENUE · TIER ${state.venueTier}`);
+      showMessage(`NEW VENUE · TIER ${state.venueTier}`, 'gold');
     } else if (upgradeScore > prevUpgradeScore.current) {
-      showMessage('UPGRADE INSTALLED');
+      showMessage('UPGRADE INSTALLED', 'gold');
+    } else if (activeEventId && activeEventId !== prevEventId.current) {
+      showMessage(`⚡ ${state.activeEvent.name.toUpperCase()}`, 'event');
+    } else if (rushTier.id !== prevRushTier.current && rushTier.id !== 'steady') {
+      showMessage(`RUSH UP · ${rushTier.label}`, rushTier.hot ? 'hot' : 'good');
+    } else if (bestStreak > prevBestStreak.current && [5, 10, 20, 30, 50].includes(bestStreak)) {
+      showMessage(`🔥 ${bestStreak} SERVICE STREAK`, bestStreak >= 20 ? 'hot' : 'good');
     } else if (servedDelta > 0 && coinDelta > 0) {
       showMessage(`+${formatCoins(coinDelta)} · ${servedDelta > 1 ? `${servedDelta} ORDERS` : 'ORDER SERVED'}`);
     } else if (coinDelta > 0) {
@@ -58,16 +77,37 @@ export function GameFeedback({ state }) {
     prevLifetimeCoins.current = state.lifetimeCoins;
     prevVenueTier.current = state.venueTier;
     prevUpgradeScore.current = upgradeScore;
-  }, [state.totalServed, state.lifetimeCoins, state.venueTier, upgradeScore]);
+    prevRushTier.current = rushTier.id;
+    prevEventId.current = activeEventId;
+    prevBestStreak.current = bestStreak;
+  }, [
+    state.totalServed,
+    state.lifetimeCoins,
+    state.venueTier,
+    state.activeEvent,
+    state.bestServiceStreak,
+    upgradeScore,
+    rushTier.id,
+    rushTier.label,
+    rushTier.hot,
+  ]);
 
   useEffect(() => () => animation.current?.stop(), []);
 
-  if (!message) return null;
+  if (!feedback.message) return null;
 
   return (
     <View pointerEvents="none" style={styles.layer}>
-      <Animated.View style={[styles.toast, { opacity, transform: [{ translateY }] }]}>
-        <Text style={styles.toastText}>{message}</Text>
+      <Animated.View
+        style={[
+          styles.toast,
+          feedback.tone === 'gold' && styles.toastGold,
+          feedback.tone === 'hot' && styles.toastHot,
+          feedback.tone === 'event' && styles.toastEvent,
+          { opacity, transform: [{ translateY }] },
+        ]}
+      >
+        <Text style={styles.toastText}>{feedback.message}</Text>
       </Animated.View>
     </View>
   );
@@ -94,6 +134,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 3, height: 3 },
     elevation: 8,
   },
+  toastGold: { backgroundColor: '#684718', borderColor: '#F6B93B' },
+  toastHot: { backgroundColor: '#7A2D13', borderColor: '#E97928' },
+  toastEvent: { backgroundColor: '#4C2B68', borderColor: '#C58AF2' },
   toastText: {
     color: '#FFF0BF',
     fontSize: 10,
