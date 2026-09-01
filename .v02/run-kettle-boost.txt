@@ -1,0 +1,1 @@
+Run the validated Kettle Boost integration: apply the gameplay/save/UI/test patch, run the Node suite and all-platform Expo export, then commit only if green.
