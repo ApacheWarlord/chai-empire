@@ -27,6 +27,10 @@ export function GameFeedback({ state }) {
   const prevEventId = useRef(state.activeEvent?.id || null);
   const prevBestStreak = useRef(state.bestServiceStreak || 0);
   const prevKettleBoostUses = useRef(state.kettleBoostUses || 0);
+  const prevPriorityOfferId = useRef(state.priorityOffer?.id || null);
+  const prevPriorityAccepted = useRef(state.priorityOrdersAccepted || 0);
+  const prevPriorityCompleted = useRef(state.priorityOrdersCompleted || 0);
+  const prevPriorityMissed = useRef(state.priorityOrdersMissed || 0);
   const [feedback, setFeedback] = useState({ message: '', tone: 'good' });
   const animation = useRef(null);
 
@@ -58,8 +62,20 @@ export function GameFeedback({ state }) {
     const activeEventId = state.activeEvent?.id || null;
     const bestStreak = state.bestServiceStreak || 0;
     const kettleBoostUses = state.kettleBoostUses || 0;
+    const priorityOfferId = state.priorityOffer?.id || null;
+    const priorityAccepted = state.priorityOrdersAccepted || 0;
+    const priorityCompleted = state.priorityOrdersCompleted || 0;
+    const priorityMissed = state.priorityOrdersMissed || 0;
 
-    if (kettleBoostUses > prevKettleBoostUses.current) {
+    if (priorityCompleted > prevPriorityCompleted.current) {
+      showMessage(`★ EXPRESS SERVED · +${formatCoins(Math.max(0, coinDelta))}`, 'gold');
+    } else if (priorityAccepted > prevPriorityAccepted.current) {
+      showMessage('⚡ EXPRESS TICKET LOCKED', 'event');
+    } else if (priorityOfferId && priorityOfferId !== prevPriorityOfferId.current) {
+      showMessage(`⚡ PRIORITY ORDER · ${Math.ceil(state.priorityOffer.remaining)}s`, 'event');
+    } else if (priorityMissed > prevPriorityMissed.current) {
+      showMessage('EXPRESS WINDOW MISSED', 'hot');
+    } else if (kettleBoostUses > prevKettleBoostUses.current) {
       showMessage(`⚡ KETTLE BOOST · ${Math.ceil(state.kettleBoostRemaining || 0)}s`, 'hot');
     } else if (state.venueTier > prevVenueTier.current) {
       showMessage(`NEW VENUE · TIER ${state.venueTier}`, 'gold');
@@ -85,6 +101,10 @@ export function GameFeedback({ state }) {
     prevEventId.current = activeEventId;
     prevBestStreak.current = bestStreak;
     prevKettleBoostUses.current = kettleBoostUses;
+    prevPriorityOfferId.current = priorityOfferId;
+    prevPriorityAccepted.current = priorityAccepted;
+    prevPriorityCompleted.current = priorityCompleted;
+    prevPriorityMissed.current = priorityMissed;
   }, [
     state.totalServed,
     state.lifetimeCoins,
@@ -93,6 +113,10 @@ export function GameFeedback({ state }) {
     state.bestServiceStreak,
     state.kettleBoostUses,
     state.kettleBoostRemaining,
+    state.priorityOffer,
+    state.priorityOrdersAccepted,
+    state.priorityOrdersCompleted,
+    state.priorityOrdersMissed,
     upgradeScore,
     rushTier.id,
     rushTier.label,

@@ -336,3 +336,16 @@ test('save hydration clamps Priority Order state', () => {
   assert.equal(restored.priorityOrdersCompleted, 0);
   assert.equal(restored.priorityOrdersMissed, 4);
 });
+
+
+test('accepted Priority Order keeps its express flag when assigned to a worker', () => {
+  const state = createInitialState();
+  state.eventCooldown = 999;
+  state.priorityOfferCooldown = 999;
+  state.priorityOffer = { id: 'handoff-offer', itemId: 'basic-chai', remaining: 6, customerTypeId: 'student', customerEmoji: '🎒', customerName: 'Student', spendMultiplier: 2.2 };
+  const accepted = acceptPriorityOrder(state);
+  const next = simulateTicks(accepted, 1);
+  assert.equal(next.activeOrders.length, 1);
+  assert.equal(next.activeOrders[0].priorityOrder, true);
+  assert.equal(next.activeOrders[0].spendMultiplier, 2.2);
+});

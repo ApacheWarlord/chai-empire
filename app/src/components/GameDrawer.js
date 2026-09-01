@@ -192,6 +192,14 @@ function RushPanel({ state, stats, onUseKettleBoost }) {
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.expressStrip, state.priorityOffer && styles.expressStripLive]}>
+        <View>
+          <Text style={styles.expressTitle}>⚡ EXPRESS DESK</Text>
+          <Text style={styles.expressSub}>{state.priorityOffer ? `${Math.ceil(state.priorityOffer.remaining)}s LIVE · DECIDE NOW` : `NEXT WINDOW ~${Math.ceil(state.priorityOfferCooldown || 0)}s`}</Text>
+        </View>
+        <Text style={styles.expressScore}>{state.priorityOrdersCompleted || 0} SERVED · {state.priorityOrdersMissed || 0} MISSED</Text>
+      </View>
+
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>STALL OPERATIONS</Text>
         <View style={styles.metricGridLight}>
@@ -216,6 +224,8 @@ function RushPanel({ state, stats, onUseKettleBoost }) {
         <Metric label="BEST STREAK" value={state.bestServiceStreak || 0} />
         <Metric label="MOOD" value={formatPercent(state.satisfaction)} />
         <Metric label="AVG TICKET" value={formatCoins(stats.averagePayout)} />
+        <Metric label="EXPRESS TAKEN" value={state.priorityOrdersAccepted || 0} />
+        <Metric label="EXPRESS SERVED" value={state.priorityOrdersCompleted || 0} />
       </View>
 
       <View style={styles.card}>
@@ -389,6 +399,11 @@ const styles = StyleSheet.create({
   boostButton: { marginTop: 8, backgroundColor: C.orange, borderWidth: 3, borderColor: '#8C3914', paddingVertical: 8, alignItems: 'center' },
   boostButtonDisabled: { backgroundColor: '#5C5142', borderColor: '#3D362E' },
   boostButtonText: { color: '#FFF3CD', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
+  expressStrip: { backgroundColor: '#3A210F', borderWidth: 3, borderColor: '#8A5522', padding: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  expressStripLive: { backgroundColor: '#5A2A12', borderColor: C.gold },
+  expressTitle: { color: C.gold, fontSize: 8.5, fontWeight: '900' },
+  expressSub: { color: '#D7B77F', fontSize: 7, fontWeight: '800', marginTop: 2 },
+  expressScore: { color: '#FFF0BF', fontSize: 7, fontWeight: '900', textAlign: 'right' },
   card: { backgroundColor: '#F2D99D', borderWidth: 3, borderColor: '#7A481E', padding: 8 },
   cardReady: { borderColor: C.green, backgroundColor: '#F5E6B5' },
   cardComplete: { borderColor: '#557C2A' },

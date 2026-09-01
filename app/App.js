@@ -161,7 +161,7 @@ export default function App() {
           </View>
         ) : null}
 
-        <View style={styles.sceneFrame}>
+        <View style={[styles.sceneFrame, state.kettleBoostRemaining > 0 && styles.sceneFrameBoost]}>
           <GameFeedback state={state} />
           <View style={styles.bigSignOuter}>
             <View style={styles.bigSignInner}>
@@ -198,6 +198,12 @@ export default function App() {
               onAccept={acceptPriority}
             />
 
+            {state.serviceStreak >= 3 ? (
+              <View style={styles.streakChip}>
+                <Text style={styles.streakChipText}>🔥 {state.serviceStreak} STREAK</Text>
+              </View>
+            ) : null}
+
             <View style={styles.stallRoof}>
               {Array.from({ length: 9 }).map((_, i) => <View key={i} style={styles.roofStripe} />)}
             </View>
@@ -212,7 +218,7 @@ export default function App() {
                 </View>
                 <View style={styles.workerRow}>
                   <Sprite source={pixelSprites.owner} size={compact ? 52 : 60} animated />
-                  <View style={styles.kettleStation}>
+                  <View style={[styles.kettleStation, state.kettleBoostRemaining > 0 && styles.kettleStationBoost]}>
                     <Text style={styles.steam}>≈</Text>
                     <Text style={styles.kettleEmoji}>♨</Text>
                     <Text style={styles.chaiTray}>▥▥▥</Text>
@@ -242,8 +248,8 @@ export default function App() {
                 const patienceRatio = Math.max(0, Math.min(1, customer.patience / Math.max(1, customer.maxPatience || customer.patience || 1)));
                 return (
                   <View key={customer.id} style={styles.customerSlot}>
-                    <View style={styles.orderBubble}>
-                      <Text style={styles.orderBubbleText}>{item?.orderBubble || '☕'}</Text>
+                    <View style={[styles.orderBubble, customer.priorityOrder && styles.orderBubblePriority]}>
+                      <Text style={styles.orderBubbleText}>{customer.priorityOrder ? `⚡ ${item?.orderBubble || '☕'}` : item?.orderBubble || '☕'}</Text>
                     </View>
                     <Sprite source={customerSprites[customer.customerTypeId] || pixelSprites.officeWorker} size={compact ? 42 : 48} animated delay={index * 90} />
                     <View style={styles.patienceTrack}>
@@ -369,7 +375,7 @@ export default function App() {
             onPress={() => setActivePanel(activePanel === 'milestones' ? null : 'milestones')}
             active={activePanel === 'milestones'}
           />
-          <View style={styles.centerBadge}>
+          <View style={[styles.centerBadge, state.kettleBoostRemaining > 0 && styles.centerBadgeBoost]}>
             <Text style={styles.centerBadgeCup}>☕</Text>
             <Text style={styles.centerBadgeText}>{state.kettleBoostRemaining > 0 ? `BOOST ${Math.ceil(state.kettleBoostRemaining)}s` : 'AUTO SERVING'}</Text>
           </View>
@@ -635,6 +641,7 @@ const styles = StyleSheet.create({
   smallButtonText: { color: '#FFF7DD', fontSize: 9, fontWeight: '900' },
 
   sceneFrame: { borderWidth: 4, borderColor: C.wood2, backgroundColor: C.dark, ...pixelShadow },
+  sceneFrameBoost: { borderColor: C.gold, shadowOpacity: 0.95, elevation: 10 },
   bigSignOuter: { backgroundColor: '#3C200F', padding: 5, borderBottomWidth: 3, borderColor: '#1A0D05' },
   bigSignInner: { backgroundColor: C.wood, borderWidth: 3, borderColor: '#BB7126', paddingVertical: 5, alignItems: 'center' },
   gameTitle: { color: C.gold, fontSize: 26, fontWeight: '900', letterSpacing: 2 },
@@ -658,6 +665,7 @@ const styles = StyleSheet.create({
   workerRow: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around' },
   helperCluster: { minWidth: 76, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginLeft: -8 },
   kettleStation: { alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 10 },
+  kettleStationBoost: { backgroundColor: '#5E2B12', borderWidth: 2, borderColor: C.orange, paddingHorizontal: 8, paddingTop: 3 },
   steam: { color: '#F0ECE0', fontSize: 30, lineHeight: 25, fontWeight: '900' },
   kettleEmoji: { color: '#C7C2B8', fontSize: 30 },
   chaiTray: { color: C.gold, fontWeight: '900', marginTop: -4 },
@@ -667,12 +675,15 @@ const styles = StyleSheet.create({
   queueRoad: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 95, backgroundColor: C.road, borderTopWidth: 5, borderColor: '#B49A6E', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-evenly', paddingBottom: 5, paddingHorizontal: 4 },
   customerSlot: { width: '18%', alignItems: 'center', justifyContent: 'flex-end' },
   orderBubble: { minWidth: 28, height: 24, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: '#6F431C', alignItems: 'center', justifyContent: 'center', marginBottom: -2, zIndex: 3 },
+  orderBubblePriority: { minWidth: 40, backgroundColor: '#FFE08A', borderColor: C.orange },
   orderBubbleText: { fontSize: 12 },
   patienceTrack: { width: 34, height: 5, borderWidth: 1, borderColor: '#28180C', backgroundColor: '#4A3D32' },
   patienceFill: { height: '100%', backgroundColor: C.green2 },
   patienceLow: { backgroundColor: C.red },
   emptyQueue: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyQueueText: { color: '#EED9AC', fontSize: 9, fontWeight: '900' },
+  streakChip: { position: 'absolute', right: 8, bottom: 102, zIndex: 12, backgroundColor: '#512611', borderWidth: 2, borderColor: C.orange, paddingHorizontal: 7, paddingVertical: 4 },
+  streakChipText: { color: '#FFF0BF', fontSize: 8, fontWeight: '900' },
   sceneStats: { flexDirection: 'row', backgroundColor: '#24160D', borderTopWidth: 3, borderColor: C.wood2 },
   sceneStat: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRightWidth: 1, borderColor: '#5D3A20' },
   sceneStatLabel: { color: '#A98A62', fontSize: 7, fontWeight: '900' },
@@ -727,6 +738,7 @@ const styles = StyleSheet.create({
   bottomNavIcon: { fontSize: 17, color: C.gold },
   bottomNavLabel: { color: '#D7B77F', fontSize: 6.5, fontWeight: '900', marginTop: 2 },
   centerBadge: { flex: 1.35, backgroundColor: C.orange, borderWidth: 3, borderColor: '#7E2E0C', alignItems: 'center', justifyContent: 'center' },
+  centerBadgeBoost: { backgroundColor: '#8C3214', borderColor: C.gold },
   centerBadgeCup: { fontSize: 18 },
   centerBadgeText: { color: '#FFF0BF', fontSize: 7, fontWeight: '900', marginTop: 1 },
 });
