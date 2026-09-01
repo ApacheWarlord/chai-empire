@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createInitialDailyProgress, createInitialState, getLocalDayKey, hydrateState } from '../src/game/createInitialState.js';
 import {
+  activateKettleBoost,
   buyTrackUpgrade,
   claimDailyObjective,
   claimMilestoneReward,
@@ -203,4 +204,75 @@ test('save hydration removes duplicate and unknown milestone claims', () => {
   });
 
   assert.deepEqual(restored.claimedMilestoneIds, ['serve-25']);
+});
+
+
+
+test('Kettle Boost spends heat once and enforces its active/cooldown gates', () => {
+  const state = createInitialState();
+  const blocked = activateKettleBoost(state);
+  assert.equal(blocked, state);
+
+  state.heatMeter = 70;
+  const boosted = activateKettleBoost(state);
+  assert.equal(boosted.heatMeter, 30);
+  assert.equal(boosted.kettleBoostRemaining, 12);
+  assert.equal(boosted.kettleBoostCooldown, 28);
+  assert.equal(boosted.kettleBoostUses, 1);
+
+  const duplicate = activateKettleBoost(boosted);
+  assert.equal(duplicate, boosted);
+});
+
+test('Kettle Boost raises displayed capacity, speeds live brews, and shields queue patience', () => {
+  const base = createInitialState();
+  base.heatMeter = 70;
+  base.eventCooldown = 999;
+  base.spawnProgress = 0;
+  base.queue = [{
+    id: 'waiting',
+    itemId: 'basic-chai',
+    wait: 2,
+    patience: 10,
+    maxPatience: 20,
+    customerTypeId: 'student',
+    customerEmoji: '🎒',
+    customerName: 'Student',
+    spendMultiplier: 1,
+  }];
+  base.activeOrders = [{
+    id: 'brewing',
+    itemId: 'basic-chai',
+    remaining: 8,
+    waited: 2,
+    customerTypeId: 'office-worker',
+    customerEmoji: '💼',
+    customerName: 'Office Worker',
+    spendMultiplier: 1,
+  }];
+
+  const normalStats = getDerivedStats(base);
+  const boosted = activateKettleBoost(base);
+  const boostedStats = getDerivedStats(boosted);
+  assert.equal(boostedStats.kettleBoostActive, true);
+  assert.ok(boostedStats.averageServiceTime < normalStats.averageServiceTime);
+
+  const next = simulateTicks(boosted, 1);
+  assert.ok(Math.abs(next.activeOrders[0].remaining - 6.55) < 0.001);
+  assert.equal(next.queue[0].patience, 9.5);
+  assert.equal(next.kettleBoostRemaining, 11);
+  assert.equal(next.kettleBoostCooldown, 27);
+});
+
+test('save hydration clamps malformed Kettle Boost state', () => {
+  const restored = hydrateState({
+    ...createInitialState(),
+    kettleBoostRemaining: 999,
+    kettleBoostCooldown: -4,
+    kettleBoostUses: 3.9,
+  });
+
+  assert.equal(restored.kettleBoostRemaining, 12);
+  assert.equal(restored.kettleBoostCooldown, 0);
+  assert.equal(restored.kettleBoostUses, 3);
 });

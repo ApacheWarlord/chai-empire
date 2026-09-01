@@ -27,6 +27,7 @@ export function GameDrawer({
   venueProgress,
   onClaimObjective,
   onClaimMilestone,
+  onUseKettleBoost,
   onReset,
 }) {
   if (!panel) return null;
@@ -53,7 +54,7 @@ export function GameDrawer({
           <MissionsPanel objectives={dailyObjectives} onClaim={onClaimObjective} />
         ) : null}
         {panel === 'milestones' ? <MilestonesPanel milestones={milestones} onClaim={onClaimMilestone} /> : null}
-        {panel === 'rush' ? <RushPanel state={state} stats={stats} /> : null}
+        {panel === 'rush' ? <RushPanel state={state} stats={stats} onUseKettleBoost={onUseKettleBoost} /> : null}
         {panel === 'settings' ? (
           <SettingsPanel state={state} stats={stats} venueProgress={venueProgress} onReset={onReset} />
         ) : null}
@@ -142,7 +143,7 @@ function MilestonesPanel({ milestones, onClaim }) {
   );
 }
 
-function RushPanel({ state, stats }) {
+function RushPanel({ state, stats, onUseKettleBoost }) {
   const heat = Math.round(state.heatMeter || 0);
   const queuePressure = clamp01(state.queue.length / Math.max(1, stats.queueCapacity));
   const serviceCapacityPerMinute = stats.averageServiceTime > 0
@@ -151,6 +152,10 @@ function RushPanel({ state, stats }) {
   const demandRatio = stats.arrivalPerMinute > 0 ? serviceCapacityPerMinute / stats.arrivalPerMinute : 1;
   const serviceLimited = demandRatio < 1.05;
   const pressureHot = queuePressure >= 0.7 || serviceLimited;
+  const boostActive = (state.kettleBoostRemaining || 0) > 0;
+  const boostCooldown = Math.ceil(state.kettleBoostCooldown || 0);
+  const boostHeatGap = Math.max(0, stats.kettleBoostHeatCost - heat);
+  const boostReady = !boostActive && boostCooldown <= 0 && boostHeatGap <= 0;
 
   let advice = 'Your stall has healthy service headroom. Growth upgrades can safely push more traffic.';
   if (queuePressure >= 0.7) {
@@ -164,6 +169,28 @@ function RushPanel({ state, stats }) {
   return (
     <View style={styles.stack}>
       <SummaryBanner label={stats.rushBonus.label.toUpperCase()} value={`${heat}% HEAT`} hot={heat >= 55} />
+
+      <View style={[styles.boostCard, boostActive && styles.boostCardActive]}>
+        <View style={styles.boostTopRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.boostTitle}>⚡ KETTLE BOOST</Text>
+            <Text style={styles.boostCopy}>Spend {stats.kettleBoostHeatCost} Heat for {stats.kettleBoostDuration}s of +45% service speed and slower patience drain.</Text>
+          </View>
+          <Text style={styles.boostState}>
+            {boostActive ? `${Math.ceil(state.kettleBoostRemaining)}s` : boostCooldown > 0 ? `${boostCooldown}s CD` : boostHeatGap > 0 ? `${boostHeatGap} HEAT` : 'READY'}
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={[styles.boostButton, !boostReady && styles.boostButtonDisabled]}
+          disabled={!boostReady}
+          onPress={onUseKettleBoost}
+          accessibilityRole="button"
+          accessibilityLabel={boostReady ? 'Activate Kettle Boost' : boostActive ? 'Kettle Boost active' : boostCooldown > 0 ? `Kettle Boost cooldown ${boostCooldown} seconds` : `Need ${boostHeatGap} more Heat for Kettle Boost`}
+          accessibilityState={{ disabled: !boostReady }}
+        >
+          <Text style={styles.boostButtonText}>{boostActive ? 'BOOST RUNNING' : boostCooldown > 0 ? 'COOLING KETTLE' : boostHeatGap > 0 ? 'BUILD MORE HEAT' : 'FIRE KETTLE BOOST'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.sectionLabel}>STALL OPERATIONS</Text>
@@ -353,6 +380,15 @@ const styles = StyleSheet.create({
   summaryHot: { backgroundColor: '#7A2D13', borderColor: C.orange },
   summaryLabel: { color: '#FFF1C6', fontSize: 8.5, fontWeight: '900', flex: 1 },
   summaryValue: { color: C.gold, fontSize: 10, fontWeight: '900' },
+  boostCard: { backgroundColor: '#4B2B15', borderWidth: 3, borderColor: C.orange, padding: 9 },
+  boostCardActive: { backgroundColor: '#6C2B14', borderColor: C.gold },
+  boostTopRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  boostTitle: { color: C.gold, fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  boostCopy: { color: '#F0CF9A', fontSize: 7.5, lineHeight: 11, fontWeight: '800', marginTop: 3 },
+  boostState: { minWidth: 48, color: '#FFF1C6', fontSize: 8, fontWeight: '900', textAlign: 'right' },
+  boostButton: { marginTop: 8, backgroundColor: C.orange, borderWidth: 3, borderColor: '#8C3914', paddingVertical: 8, alignItems: 'center' },
+  boostButtonDisabled: { backgroundColor: '#5C5142', borderColor: '#3D362E' },
+  boostButtonText: { color: '#FFF3CD', fontSize: 8, fontWeight: '900', letterSpacing: 0.5 },
   card: { backgroundColor: '#F2D99D', borderWidth: 3, borderColor: '#7A481E', padding: 8 },
   cardReady: { borderColor: C.green, backgroundColor: '#F5E6B5' },
   cardComplete: { borderColor: '#557C2A' },

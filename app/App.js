@@ -57,6 +57,7 @@ export default function App() {
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    useKettleBoost,
     buyUpgrade,
     hireStaff,
     buyMenuUnlock,
@@ -339,6 +340,7 @@ export default function App() {
           venueProgress={venueProgress}
           onClaimObjective={claimObjective}
           onClaimMilestone={claimMilestone}
+          onUseKettleBoost={useKettleBoost}
           onReset={confirmReset}
         />
 
@@ -359,7 +361,7 @@ export default function App() {
           />
           <View style={styles.centerBadge}>
             <Text style={styles.centerBadgeCup}>☕</Text>
-            <Text style={styles.centerBadgeText}>AUTO SERVING</Text>
+            <Text style={styles.centerBadgeText}>{state.kettleBoostRemaining > 0 ? `BOOST ${Math.ceil(state.kettleBoostRemaining)}s` : 'AUTO SERVING'}</Text>
           </View>
           <BottomNav
             icon="⚡"

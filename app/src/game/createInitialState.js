@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 4;
+export const SAVE_SCHEMA_VERSION = 5;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -62,6 +62,9 @@ export const createInitialState = () => ({
   serviceStreak: 0,
   bestServiceStreak: 0,
   heatMeter: 0,
+  kettleBoostRemaining: 0,
+  kettleBoostCooldown: 0,
+  kettleBoostUses: 0,
   venueUnlockedToast: null,
   claimedMilestoneIds: [],
   dailyObjectives: {
@@ -159,6 +162,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     serviceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.serviceStreak, base.serviceStreak))),
     bestServiceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.bestServiceStreak, base.bestServiceStreak))),
     heatMeter: Math.min(100, Math.max(0, toFiniteNumber(saved.heatMeter, base.heatMeter))),
+    kettleBoostRemaining: Math.min(12, Math.max(0, toFiniteNumber(saved.kettleBoostRemaining, base.kettleBoostRemaining))),
+    kettleBoostCooldown: Math.min(28, Math.max(0, toFiniteNumber(saved.kettleBoostCooldown, base.kettleBoostCooldown))),
+    kettleBoostUses: Math.max(0, Math.floor(toFiniteNumber(saved.kettleBoostUses, base.kettleBoostUses))),
     claimedMilestoneIds: Array.isArray(saved.claimedMilestoneIds)
       ? [...new Set(saved.claimedMilestoneIds.filter((id) => typeof id === 'string' && validMilestoneIds.has(id)))]
       : base.claimedMilestoneIds,

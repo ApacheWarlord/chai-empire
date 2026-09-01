@@ -26,6 +26,7 @@ export function GameFeedback({ state }) {
   const prevRushTier = useRef(getRushTier(state.heatMeter || 0).id);
   const prevEventId = useRef(state.activeEvent?.id || null);
   const prevBestStreak = useRef(state.bestServiceStreak || 0);
+  const prevKettleBoostUses = useRef(state.kettleBoostUses || 0);
   const [feedback, setFeedback] = useState({ message: '', tone: 'good' });
   const animation = useRef(null);
 
@@ -56,8 +57,11 @@ export function GameFeedback({ state }) {
     const coinDelta = state.lifetimeCoins - prevLifetimeCoins.current;
     const activeEventId = state.activeEvent?.id || null;
     const bestStreak = state.bestServiceStreak || 0;
+    const kettleBoostUses = state.kettleBoostUses || 0;
 
-    if (state.venueTier > prevVenueTier.current) {
+    if (kettleBoostUses > prevKettleBoostUses.current) {
+      showMessage(`⚡ KETTLE BOOST · ${Math.ceil(state.kettleBoostRemaining || 0)}s`, 'hot');
+    } else if (state.venueTier > prevVenueTier.current) {
       showMessage(`NEW VENUE · TIER ${state.venueTier}`, 'gold');
     } else if (upgradeScore > prevUpgradeScore.current) {
       showMessage('UPGRADE INSTALLED', 'gold');
@@ -80,12 +84,15 @@ export function GameFeedback({ state }) {
     prevRushTier.current = rushTier.id;
     prevEventId.current = activeEventId;
     prevBestStreak.current = bestStreak;
+    prevKettleBoostUses.current = kettleBoostUses;
   }, [
     state.totalServed,
     state.lifetimeCoins,
     state.venueTier,
     state.activeEvent,
     state.bestServiceStreak,
+    state.kettleBoostUses,
+    state.kettleBoostRemaining,
     upgradeScore,
     rushTier.id,
     rushTier.label,

@@ -9,6 +9,11 @@ const HEAT_DECAY_PER_SECOND = 1.4;
 const HEAT_GAIN_FAST_SERVICE = 18;
 const HEAT_GAIN_NORMAL_SERVICE = 10;
 const HEAT_LOSS_SLOW_SERVICE = 16;
+const KETTLE_BOOST_HEAT_COST = 40;
+const KETTLE_BOOST_DURATION_SECONDS = 12;
+const KETTLE_BOOST_COOLDOWN_SECONDS = 28;
+const KETTLE_BOOST_SPEED_MULTIPLIER = 1.45;
+const KETTLE_BOOST_PATIENCE_LOSS = 0.5;
 
 const getRushBonus = (heatMeter) => {
   if (heatMeter >= 85) {
@@ -115,6 +120,12 @@ const tutorialSteps = [
     condition: (state) => state.coins >= 150 && !state.staffOwned.includes(2),
   },
   {
+    id: 'kettle-boost',
+    title: 'Spend heat when the queue bites',
+    body: 'At 40 Heat, open Rush Control and fire Kettle Boost for a short service surge. Save it for real pressure.',
+    condition: (state) => (state.heatMeter || 0) >= KETTLE_BOOST_HEAT_COST && (state.kettleBoostUses || 0) === 0,
+  },
+  {
     id: 'venue-goal',
     title: 'Aim for the next stall',
     body: 'Save up and build toward your first venue upgrade. That is the long game.',
@@ -194,8 +205,10 @@ export const getDerivedStats = (state) => {
   const venue = getVenue(state);
   const unlockedMenuEntries = getUnlockedMenuEntries(state);
   const workerCount = state.staffOwned.length;
+  const kettleBoostActive = (state.kettleBoostRemaining || 0) > 0;
+  const kettleBoostMultiplier = kettleBoostActive ? KETTLE_BOOST_SPEED_MULTIPLIER : 1;
   const prepMultiplier = 1 + state.levels.speed * 0.15;
-  const serviceMultiplier = 1 + state.levels.service * 0.1;
+  const serviceMultiplier = (1 + state.levels.service * 0.1) * kettleBoostMultiplier;
   const qualityMultiplier = 1 + state.levels.quality * 0.06;
   const reputationBonus = state.levels.reputation * 0.04;
   const menuVarietyBonus = Math.max(0, unlockedMenuEntries.length - 1) * 0.06;
@@ -230,6 +243,11 @@ export const getDerivedStats = (state) => {
     unlockedMenuEntries,
     customerMix: customerTypes,
     rushBonus,
+    kettleBoostActive,
+    kettleBoostMultiplier,
+    kettleBoostHeatCost: KETTLE_BOOST_HEAT_COST,
+    kettleBoostDuration: KETTLE_BOOST_DURATION_SECONDS,
+    kettleBoostCooldown: KETTLE_BOOST_COOLDOWN_SECONDS,
   };
 };
 
@@ -315,14 +333,15 @@ export const simulateTicks = (inputState, totalSeconds) => {
       spawnProgress -= 1;
     }
 
+    const patienceLoss = stats.kettleBoostActive ? KETTLE_BOOST_PATIENCE_LOSS : 1;
     const agedQueue = queue
-      .map((customer) => ({ ...customer, wait: customer.wait + 1, patience: customer.patience - 1 }))
+      .map((customer) => ({ ...customer, wait: customer.wait + 1, patience: customer.patience - patienceLoss }))
       .filter((customer) => customer.patience > 0);
 
     const freeWorkers = Math.max(0, stats.workerCount - state.activeOrders.length);
     const nextQueue = [...agedQueue];
     const activeOrders = state.activeOrders
-      .map((order) => ({ ...order, remaining: order.remaining - 1 }))
+      .map((order) => ({ ...order, remaining: order.remaining - stats.kettleBoostMultiplier }))
       .filter((order) => order.remaining > 0);
 
     for (let i = 0; i < freeWorkers && nextQueue.length > 0; i += 1) {
@@ -392,6 +411,8 @@ export const simulateTicks = (inputState, totalSeconds) => {
       serviceStreak,
       bestServiceStreak,
       heatMeter,
+      kettleBoostRemaining: Math.max(0, (state.kettleBoostRemaining || 0) - TICK_SECONDS),
+      kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - TICK_SECONDS),
     };
     state = addDailyProgress(state, {
       totalServed: servedCount,
@@ -401,6 +422,25 @@ export const simulateTicks = (inputState, totalSeconds) => {
   }
 
   return state;
+};
+
+export const activateKettleBoost = (state) => {
+  const heat = state.heatMeter || 0;
+  if (
+    heat < KETTLE_BOOST_HEAT_COST ||
+    (state.kettleBoostRemaining || 0) > 0 ||
+    (state.kettleBoostCooldown || 0) > 0
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    heatMeter: Math.max(0, heat - KETTLE_BOOST_HEAT_COST),
+    kettleBoostRemaining: KETTLE_BOOST_DURATION_SECONDS,
+    kettleBoostCooldown: KETTLE_BOOST_COOLDOWN_SECONDS,
+    kettleBoostUses: (state.kettleBoostUses || 0) + 1,
+  };
 };
 
 export const getBottleneck = (state) => {
@@ -613,6 +653,8 @@ export const claimOfflineProgress = (state, elapsedMs) => {
       ...state,
       coins: state.coins + offlineCoins,
       lifetimeCoins: state.lifetimeCoins + offlineCoins,
+      kettleBoostRemaining: 0,
+      kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - elapsedMinutes * 60),
     },
   };
 };
