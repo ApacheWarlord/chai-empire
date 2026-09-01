@@ -1,1 +1,1 @@
-Run the validated Kettle Boost integration: apply the gameplay/save/UI/test patch, run the Node suite and all-platform Expo export, then commit only if green.
+Retry the validated Kettle Boost integration with the corrected throughput regression: apply gameplay/save/UI changes, run the Node suite and all-platform Expo export, then commit only if green.
