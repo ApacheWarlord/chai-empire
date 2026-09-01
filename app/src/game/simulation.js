@@ -18,6 +18,13 @@ const PRIORITY_OFFER_DURATION_SECONDS = 8;
 const PRIORITY_OFFER_COOLDOWN_SECONDS = 42;
 const PRIORITY_ORDER_PAYOUT_MULTIPLIER = 2.2;
 const PRIORITY_ORDER_HEAT_BONUS = 12;
+const SERVICE_CHOICE_COOLDOWN_SECONDS = 12;
+
+export const SERVICE_CHOICES = [
+  { id: 'quick-pour', label: 'Quick Pour', icon: '⚡', blurb: 'Finish the oldest brew now · costs 18 Heat' },
+  { id: 'warm-welcome', label: 'Warm Welcome', icon: '☺', blurb: 'Restore 6 patience to the queue' },
+  { id: 'street-call', label: 'Street Call', icon: '◆', blurb: 'Invite one tipped customer · costs 5 coins' },
+];
 
 const getRushBonus = (heatMeter) => {
   if (heatMeter >= 85) {
@@ -476,6 +483,14 @@ export const simulateTicks = (inputState, totalSeconds) => {
       kettleBoostRemaining: Math.max(0, (state.kettleBoostRemaining || 0) - TICK_SECONDS),
       kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - TICK_SECONDS),
       priorityOrdersCompleted: (state.priorityOrdersCompleted || 0) + priorityServed,
+      serviceChoice: {
+        ...state.serviceChoice,
+        cooldown: Math.max(0, (state.serviceChoice?.cooldown || 0) - TICK_SECONDS),
+      },
+      sessionRun: {
+        ...state.sessionRun,
+        served: Math.min(state.sessionRun.target, state.sessionRun.served + servedCount),
+      },
     };
     state = addDailyProgress(state, {
       totalServed: servedCount,
@@ -756,5 +771,102 @@ export const claimOfflineProgress = (state, elapsedMs) => {
       coins: timedState.coins + offlineCoins,
       lifetimeCoins: timedState.lifetimeCoins + offlineCoins,
     },
+  };
+};
+
+export const getServiceChoices = (state) => {
+  const ready = (state.serviceChoice?.cooldown || 0) <= 0;
+  return SERVICE_CHOICES.map((choice) => ({
+    ...choice,
+    ready,
+    disabledReason: !ready
+      ? `NEXT CHOICE IN ${Math.ceil(state.serviceChoice.cooldown)}s`
+      : choice.id === 'quick-pour' && ((state.heatMeter || 0) < 18 || !state.activeOrders.length)
+        ? 'NEED 18 HEAT + A BREW'
+        : choice.id === 'warm-welcome' && !state.queue.length
+          ? 'QUEUE IS HAPPY'
+        : choice.id === 'street-call' && state.coins < 5
+            ? 'NEED 5 COINS'
+            : choice.id === 'street-call' && state.queue.length >= getDerivedStats(state).queueCapacity
+              ? 'QUEUE IS FULL'
+            : null,
+  }));
+};
+
+export const chooseServiceAction = (state, choiceId) => {
+  const choice = getServiceChoices(state).find((entry) => entry.id === choiceId);
+  if (!choice || !choice.ready || choice.disabledReason) return state;
+
+  let next = { ...state };
+  if (choiceId === 'quick-pour') {
+    const activeOrders = state.activeOrders.map((order, index) => index === 0 ? { ...order, remaining: 1.5 } : order);
+    next = { ...next, activeOrders, heatMeter: Math.max(0, state.heatMeter - 18) };
+  } else if (choiceId === 'warm-welcome') {
+    next = {
+      ...next,
+      queue: state.queue.map((customer) => ({
+        ...customer,
+        patience: Math.min(customer.maxPatience || customer.patience + 6, customer.patience + 6),
+      })),
+      satisfaction: Math.min(100, state.satisfaction + 1),
+    };
+  } else if (choiceId === 'street-call') {
+    const item = getUnlockedMenuEntries(state)[state.serviceChoice.sequence % getUnlockedMenuEntries(state).length];
+    const maxPatience = 24;
+    next = {
+      ...next,
+      coins: state.coins - 5,
+      queue: [...state.queue, {
+        id: `street-${state.sessionRun.run}-${state.serviceChoice.sequence}`,
+        itemId: item.id,
+        wait: 0,
+        patience: maxPatience,
+        maxPatience,
+        customerTypeId: 'regular',
+        customerEmoji: '☕',
+        customerName: 'Street Guest',
+        spendMultiplier: 1.6,
+      }],
+    };
+  }
+
+  return {
+    ...next,
+    serviceChoice: {
+      sequence: state.serviceChoice.sequence + 1,
+      cooldown: SERVICE_CHOICE_COOLDOWN_SECONDS,
+      lastChoiceId: choiceId,
+    },
+  };
+};
+
+export const prepareSessionReward = (state) => {
+  if (state.pendingReward || state.sessionRun.served < state.sessionRun.target) return state;
+  const rewardId = state.sessionRun.rewardId || `session-${state.sessionRun.run}`;
+  if (state.rewardLedger.includes(rewardId)) return state;
+  return {
+    ...state,
+    pendingReward: { id: rewardId, source: 'session-run', label: `Tea Run ${state.sessionRun.run}`, amount: state.sessionRun.reward },
+    sessionRun: { ...state.sessionRun, rewardId },
+  };
+};
+
+export const resolvePendingReward = (state, rewardId, multiplier = 1) => {
+  const reward = state.pendingReward;
+  if (!reward || reward.id !== rewardId || state.rewardLedger.includes(rewardId)) return state;
+  const safeMultiplier = multiplier === 2 ? 2 : 1;
+  const nextRun = state.sessionRun.run + 1;
+  return {
+    ...state,
+    coins: state.coins + reward.amount * safeMultiplier,
+    rewardLedger: [...state.rewardLedger, rewardId].slice(-200),
+    pendingReward: null,
+    sessionRun: reward.source === 'session-run' ? {
+      run: nextRun,
+      served: 0,
+      target: Math.min(12, 6 + Math.floor(nextRun / 2)),
+      reward: Math.min(260, 90 + (nextRun - 1) * 15),
+      rewardId: null,
+    } : state.sessionRun,
   };
 };

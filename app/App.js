@@ -21,6 +21,8 @@ import { GameDrawer } from './src/components/GameDrawer';
 import { GameFeedback } from './src/components/GameFeedback';
 import { PriorityOrderPrompt } from './src/components/PriorityOrderPrompt';
 import { VenueDecor } from './src/components/VenueDecor';
+import { SessionLoop } from './src/components/SessionLoop';
+import { RewardedAdModal } from './src/components/RewardedAdModal';
 
 const TABS = [
   { id: 'speed', label: 'UPGRADES', icon: '☕' },
@@ -54,10 +56,14 @@ export default function App() {
     dailyObjectives,
     tutorialStep,
     bottleneck,
+    serviceChoices,
     offlineCoins,
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    chooseService,
+    openSessionReward,
+    claimPendingReward,
     acceptPriority,
     useKettleBoost,
     buyUpgrade,
@@ -160,6 +166,13 @@ export default function App() {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        <SessionLoop
+          run={state.sessionRun}
+          choices={serviceChoices}
+          onChoose={chooseService}
+          onClaim={openSessionReward}
+        />
 
         <View style={[styles.sceneFrame, state.kettleBoostRemaining > 0 && styles.sceneFrameBoost]}>
           <GameFeedback state={state} />
@@ -393,6 +406,7 @@ export default function App() {
           />
         </View>
       </ScrollView>
+      <RewardedAdModal reward={state.pendingReward} onResolve={claimPendingReward} />
     </SafeAreaView>
   );
 }

@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 6;
+export const SAVE_SCHEMA_VERSION = 7;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -70,6 +70,10 @@ export const createInitialState = () => ({
   priorityOrdersAccepted: 0,
   priorityOrdersCompleted: 0,
   priorityOrdersMissed: 0,
+  serviceChoice: { sequence: 0, cooldown: 4, lastChoiceId: null },
+  sessionRun: { run: 1, served: 0, target: 6, reward: 90, rewardId: null },
+  rewardLedger: [],
+  pendingReward: null,
   venueUnlockedToast: null,
   claimedMilestoneIds: [],
   dailyObjectives: {
@@ -153,6 +157,40 @@ const sanitizePriorityOffer = (value) => {
   };
 };
 
+const sanitizeServiceChoice = (value, base) => {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    sequence: clampInteger(source.sequence, base.sequence, 0, 1000000),
+    cooldown: Math.min(30, Math.max(0, toFiniteNumber(source.cooldown, base.cooldown))),
+    lastChoiceId: typeof source.lastChoiceId === 'string' ? source.lastChoiceId : null,
+  };
+};
+
+const sanitizeSessionRun = (value, base) => {
+  const source = value && typeof value === 'object' ? value : {};
+  const run = clampInteger(source.run, base.run, 1, 1000000);
+  const target = clampInteger(source.target, base.target, 3, 30);
+  const rewardId = typeof source.rewardId === 'string' ? source.rewardId : null;
+  return {
+    run,
+    served: clampInteger(source.served, base.served, 0, target),
+    target,
+    reward: clampInteger(source.reward, base.reward, 10, 10000),
+    rewardId,
+  };
+};
+
+const sanitizePendingReward = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
+  if (!['session-run', 'daily-objective', 'milestone'].includes(value.source)) return null;
+  return {
+    id: value.id,
+    source: value.source,
+    label: typeof value.label === 'string' ? value.label : 'Stall reward',
+    amount: clampInteger(value.amount, 0, 1, 1000000),
+  };
+};
+
 const sanitizeDailyProgress = (value) => {
   const progress = value && typeof value === 'object' ? value : {};
   return {
@@ -191,6 +229,12 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     priorityOrdersAccepted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersAccepted, base.priorityOrdersAccepted))),
     priorityOrdersCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersCompleted, base.priorityOrdersCompleted))),
     priorityOrdersMissed: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersMissed, base.priorityOrdersMissed))),
+    serviceChoice: sanitizeServiceChoice(saved.serviceChoice, base.serviceChoice),
+    sessionRun: sanitizeSessionRun(saved.sessionRun, base.sessionRun),
+    rewardLedger: Array.isArray(saved.rewardLedger)
+      ? [...new Set(saved.rewardLedger.filter((id) => typeof id === 'string'))].slice(-200)
+      : base.rewardLedger,
+    pendingReward: sanitizePendingReward(saved.pendingReward),
     claimedMilestoneIds: Array.isArray(saved.claimedMilestoneIds)
       ? [...new Set(saved.claimedMilestoneIds.filter((id) => typeof id === 'string' && validMilestoneIds.has(id)))]
       : base.claimedMilestoneIds,
@@ -227,6 +271,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   sanitized.lifetimeCoins = Math.max(sanitized.lifetimeCoins, sanitized.coins);
   sanitized.premiumServed = Math.min(sanitized.premiumServed, sanitized.totalServed);
   sanitized.bestServiceStreak = Math.max(sanitized.bestServiceStreak, sanitized.serviceStreak);
+  if (sanitized.pendingReward && sanitized.rewardLedger.includes(sanitized.pendingReward.id)) {
+    sanitized.pendingReward = null;
+  }
 
   const venue = venueTiers.find((entry) => entry.id === sanitized.venueTier) || venueTiers[0];
   sanitized.staffOwned = sanitized.staffOwned.filter((workerCount) => workerCount <= venue.workerCap);

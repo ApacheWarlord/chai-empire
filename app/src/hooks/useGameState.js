@@ -15,15 +15,19 @@ import {
   claimDailyObjective,
   claimMilestoneReward,
   claimOfflineProgress,
+  chooseServiceAction,
   dismissTutorialStep,
   getBottleneck,
   getDailyObjectives,
   getDerivedStats,
   getMilestones,
+  getServiceChoices,
   getRecommendation,
   getTutorialStep,
   getVenueProgress,
   simulateTicks,
+  prepareSessionReward,
+  resolvePendingReward,
   unlockMenuItem,
   unlockNextVenue,
   unlockStaff,
@@ -133,6 +137,7 @@ export const useGameState = () => {
   const dailyObjectives = useMemo(() => getDailyObjectives(state), [state]);
   const tutorialStep = useMemo(() => getTutorialStep(state), [state]);
   const bottleneck = useMemo(() => getBottleneck(state), [state]);
+  const serviceChoices = useMemo(() => getServiceChoices(state), [state]);
 
   const acceptPriority = useCallback(() => setState((current) => acceptPriorityOrder(current)), []);
   const useKettleBoost = useCallback(() => setState((current) => activateKettleBoost(current)), []);
@@ -145,6 +150,9 @@ export const useGameState = () => {
   const dismissTutorial = useCallback((id) => setState((current) => dismissTutorialStep(current, id)), []);
   const clearOfflineCoins = useCallback(() => setOfflineCoins(0), []);
   const dismissRecoveryNotice = useCallback(() => setRecoveryNotice(''), []);
+  const chooseService = useCallback((id) => setState((current) => chooseServiceAction(current, id)), []);
+  const openSessionReward = useCallback(() => setState((current) => prepareSessionReward(current)), []);
+  const claimPendingReward = useCallback((id, multiplier = 1) => setState((current) => resolvePendingReward(current, id, multiplier)), []);
   const resetGame = useCallback(async () => {
     const fresh = createInitialState();
     stateRef.current = fresh;
@@ -164,10 +172,14 @@ export const useGameState = () => {
     dailyObjectives,
     tutorialStep,
     bottleneck,
+    serviceChoices,
     offlineCoins,
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    chooseService,
+    openSessionReward,
+    claimPendingReward,
     acceptPriority,
     useKettleBoost,
     buyUpgrade,
