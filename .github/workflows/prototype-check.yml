@@ -16,10 +16,10 @@ jobs:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
@@ -35,14 +35,14 @@ jobs:
         run: npx expo export --platform all --output-dir dist
 
       - name: Upload prototype bundles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: chai-empire-v02-bundles
           path: app/dist
           if-no-files-found: error
 
       - name: Upload source snapshot
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: chai-empire-v02-source
           path: |
@@ -62,17 +62,17 @@ jobs:
         working-directory: app
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: app/package-lock.json
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -89,7 +89,7 @@ jobs:
         run: cd android && ./gradlew assembleRelease
 
       - name: Upload Android APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: chai-empire-v02-android-apk
           path: app/android/app/build/outputs/apk/release/*.apk
