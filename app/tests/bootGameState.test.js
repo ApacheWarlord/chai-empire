@@ -80,7 +80,7 @@ test('recovers to a fresh state and records recovery metadata when all save slot
       SAVE_RECOVERY_META_KEY,
       JSON.stringify({
         corruptedAt: 1234567890,
-        reason: 'Error: Save schema 999 is newer than supported schema 5',
+        reason: 'Error: Save schema 999 is newer than supported schema 6',
       }),
     ],
   ]);

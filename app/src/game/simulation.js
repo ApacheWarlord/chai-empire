@@ -14,6 +14,10 @@ const KETTLE_BOOST_DURATION_SECONDS = 12;
 const KETTLE_BOOST_COOLDOWN_SECONDS = 28;
 const KETTLE_BOOST_SPEED_MULTIPLIER = 1.45;
 const KETTLE_BOOST_PATIENCE_LOSS = 0.5;
+const PRIORITY_OFFER_DURATION_SECONDS = 8;
+const PRIORITY_OFFER_COOLDOWN_SECONDS = 42;
+const PRIORITY_ORDER_PAYOUT_MULTIPLIER = 2.2;
+const PRIORITY_ORDER_HEAT_BONUS = 12;
 
 const getRushBonus = (heatMeter) => {
   if (heatMeter >= 85) {
@@ -124,6 +128,12 @@ const tutorialSteps = [
     title: 'Spend heat when the queue bites',
     body: 'At 40 Heat, open Rush Control and fire Kettle Boost for a short service surge. Save it for real pressure.',
     condition: (state) => (state.heatMeter || 0) >= KETTLE_BOOST_HEAT_COST && (state.kettleBoostUses || 0) === 0,
+  },
+  {
+    id: 'priority-orders',
+    title: 'Express tickets can jump the queue',
+    body: 'Priority Orders pay much more, but they take a real worker slot. Accept them when your queue can survive the detour.',
+    condition: (state) => Boolean(state.priorityOffer) && (state.priorityOrdersAccepted || 0) === 0,
   },
   {
     id: 'venue-goal',
@@ -283,6 +293,50 @@ const pickItemForCustomerType = (entries, customerType) => {
   return randomWeightedItem(weightedEntries);
 };
 
+const createPriorityOffer = (state) => {
+  const entries = getUnlockedMenuEntries(state);
+  if (!entries.length) return state;
+  const customerType = randomWeightedCustomerTypeForState(state);
+  const item = pickItemForCustomerType(entries, customerType);
+  return {
+    ...state,
+    priorityOffer: {
+      id: `priority-${Date.now()}-${Math.random()}`,
+      itemId: item.id,
+      remaining: PRIORITY_OFFER_DURATION_SECONDS,
+      customerTypeId: customerType.id,
+      customerEmoji: customerType.emoji,
+      customerName: customerType.name,
+      spendMultiplier:
+        customerType.spendMultiplier *
+        (1 + (state.activeEvent?.payoutBoost || 0)) *
+        PRIORITY_ORDER_PAYOUT_MULTIPLIER,
+    },
+    priorityOfferCooldown: 0,
+  };
+};
+
+const tickPriorityOffer = (state) => {
+  if (state.priorityOffer) {
+    const remaining = state.priorityOffer.remaining - TICK_SECONDS;
+    if (remaining <= 0) {
+      return {
+        ...state,
+        priorityOffer: null,
+        priorityOfferCooldown: PRIORITY_OFFER_COOLDOWN_SECONDS,
+        priorityOrdersMissed: (state.priorityOrdersMissed || 0) + 1,
+      };
+    }
+    return { ...state, priorityOffer: { ...state.priorityOffer, remaining } };
+  }
+
+  const cooldown = Math.max(0, (state.priorityOfferCooldown || 0) - TICK_SECONDS);
+  if (cooldown > 0 || state.activeEvent) {
+    return { ...state, priorityOfferCooldown: cooldown };
+  }
+  return createPriorityOffer({ ...state, priorityOfferCooldown: 0 });
+};
+
 const maybeStartEvent = (state) => {
   if (state.activeEvent || state.eventCooldown > 0 || Math.random() > 0.08) {
     return state;
@@ -306,7 +360,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
   let state = ensureDailyObjectives({ ...inputState, queue: [...inputState.queue], activeOrders: [...inputState.activeOrders] });
 
   for (let second = 0; second < totalSeconds; second += 1) {
-    state = tickEvent(maybeStartEvent(state));
+    state = tickPriorityOffer(tickEvent(maybeStartEvent(state)));
     const stats = getDerivedStats(state);
     const entries = getUnlockedMenuEntries(state);
 
@@ -356,6 +410,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
         customerEmoji: customer.customerEmoji || '🙂',
         customerName: customer.customerName || 'Regular',
         spendMultiplier: customer.spendMultiplier || 1,
+        priorityOrder: Boolean(customer.priorityOrder),
       });
     }
 
@@ -363,6 +418,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
     let satisfaction = state.satisfaction;
     let servedCount = 0;
     let premiumServed = 0;
+    let priorityServed = 0;
     let serviceStreak = state.serviceStreak || 0;
     let bestServiceStreak = state.bestServiceStreak || 0;
     let heatMeter = Math.max(0, (state.heatMeter || 0) - HEAT_DECAY_PER_SECOND);
@@ -383,13 +439,19 @@ export const simulateTicks = (inputState, totalSeconds) => {
         );
         serviceStreak = servedFast ? serviceStreak + 1 : 0;
         bestServiceStreak = Math.max(bestServiceStreak, serviceStreak);
+        const baseHeatDelta = servedFast
+          ? HEAT_GAIN_FAST_SERVICE
+          : order.waited <= 8
+            ? HEAT_GAIN_NORMAL_SERVICE
+            : -HEAT_LOSS_SLOW_SERVICE;
         heatMeter = clamp(
-          heatMeter + (servedFast ? HEAT_GAIN_FAST_SERVICE : order.waited <= 8 ? HEAT_GAIN_NORMAL_SERVICE : -HEAT_LOSS_SLOW_SERVICE),
+          heatMeter + baseHeatDelta + (order.priorityOrder ? PRIORITY_ORDER_HEAT_BONUS : 0),
           0,
           100
         );
         coinsGained += payout;
         servedCount += 1;
+        if (order.priorityOrder) priorityServed += 1;
         if (item.price >= 20) premiumServed += 1;
       } else {
         unfinishedOrders.push(order);
@@ -413,6 +475,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
       heatMeter,
       kettleBoostRemaining: Math.max(0, (state.kettleBoostRemaining || 0) - TICK_SECONDS),
       kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - TICK_SECONDS),
+      priorityOrdersCompleted: (state.priorityOrdersCompleted || 0) + priorityServed,
     };
     state = addDailyProgress(state, {
       totalServed: servedCount,
@@ -422,6 +485,34 @@ export const simulateTicks = (inputState, totalSeconds) => {
   }
 
   return state;
+};
+
+export const acceptPriorityOrder = (state) => {
+  const offer = state.priorityOffer;
+  if (!offer || offer.remaining <= 0 || !state.unlockedMenu.includes(offer.itemId)) return state;
+
+  const customerType = getCustomerTypeById(offer.customerTypeId);
+  const maxPatience = Math.max(16, customerType.patience);
+  const priorityCustomer = {
+    id: `accepted-${offer.id}`,
+    itemId: offer.itemId,
+    wait: 0,
+    patience: maxPatience,
+    maxPatience,
+    customerTypeId: offer.customerTypeId,
+    customerEmoji: offer.customerEmoji,
+    customerName: offer.customerName,
+    spendMultiplier: offer.spendMultiplier,
+    priorityOrder: true,
+  };
+
+  return {
+    ...state,
+    priorityOffer: null,
+    priorityOfferCooldown: PRIORITY_OFFER_COOLDOWN_SECONDS,
+    priorityOrdersAccepted: (state.priorityOrdersAccepted || 0) + 1,
+    queue: [priorityCustomer, ...state.queue],
+  };
 };
 
 export const activateKettleBoost = (state) => {
@@ -638,23 +729,32 @@ export const dismissTutorialStep = (state, stepId) => {
 
 export const claimOfflineProgress = (state, elapsedMs) => {
   state = ensureDailyObjectives(state);
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   const elapsedMinutes = Math.min(OFFLINE_CAP_MINUTES, Math.floor(elapsedMs / 60000));
-  if (elapsedMinutes <= 0) return { state, offlineCoins: 0 };
+  const timedState = {
+    ...state,
+    kettleBoostRemaining: 0,
+    kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - elapsedSeconds),
+    priorityOffer: null,
+    priorityOfferCooldown: state.priorityOffer
+      ? PRIORITY_OFFER_COOLDOWN_SECONDS
+      : Math.max(0, (state.priorityOfferCooldown || 0) - elapsedSeconds),
+  };
 
-  const recentSamples = state.cpmWindow.filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+  if (elapsedMinutes <= 0) return { state: timedState, offlineCoins: 0 };
+
+  const recentSamples = timedState.cpmWindow.filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
   const averageCpm = recentSamples.length
     ? (recentSamples.reduce((sum, value) => sum + value, 0) * 60) / recentSamples.length
-    : getDerivedStats(state).coinsPerMinute;
+    : getDerivedStats(timedState).coinsPerMinute;
   const offlineCoins = Math.round(averageCpm * elapsedMinutes * OFFLINE_EFFICIENCY);
 
   return {
     offlineCoins,
     state: {
-      ...state,
-      coins: state.coins + offlineCoins,
-      lifetimeCoins: state.lifetimeCoins + offlineCoins,
-      kettleBoostRemaining: 0,
-      kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - elapsedMinutes * 60),
+      ...timedState,
+      coins: timedState.coins + offlineCoins,
+      lifetimeCoins: timedState.lifetimeCoins + offlineCoins,
     },
   };
 };

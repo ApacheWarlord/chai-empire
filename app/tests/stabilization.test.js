@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createInitialDailyProgress, createInitialState, getLocalDayKey, hydrateState } from '../src/game/createInitialState.js';
 import {
+  acceptPriorityOrder,
   activateKettleBoost,
   buyTrackUpgrade,
   claimDailyObjective,
@@ -275,4 +276,63 @@ test('save hydration clamps malformed Kettle Boost state', () => {
   assert.equal(restored.kettleBoostRemaining, 12);
   assert.equal(restored.kettleBoostCooldown, 0);
   assert.equal(restored.kettleBoostUses, 3);
+});
+
+
+test('Priority Offers appear on schedule and expire into the missed counter', () => {
+  const state = { ...createInitialState(), eventCooldown: 999, priorityOfferCooldown: 0 };
+  const offered = simulateTicks(state, 1);
+  assert.ok(offered.priorityOffer);
+  assert.equal(offered.priorityOffer.remaining, 8);
+  const expiring = { ...offered, priorityOffer: { ...offered.priorityOffer, remaining: 1 } };
+  const missed = simulateTicks(expiring, 1);
+  assert.equal(missed.priorityOffer, null);
+  assert.equal(missed.priorityOrdersMissed, 1);
+  assert.equal(missed.priorityOfferCooldown, 42);
+});
+
+test('accepting a Priority Order inserts a real premium customer at the front of the queue', () => {
+  const state = createInitialState();
+  state.queue = [{ id: 'regular', itemId: 'basic-chai', patience: 10 }];
+  state.priorityOffer = { id: 'offer-1', itemId: 'basic-chai', remaining: 6, customerTypeId: 'student', customerEmoji: '🎒', customerName: 'Student', spendMultiplier: 2.2 };
+  const accepted = acceptPriorityOrder(state);
+  assert.equal(accepted.priorityOffer, null);
+  assert.equal(accepted.priorityOrdersAccepted, 1);
+  assert.equal(accepted.priorityOfferCooldown, 42);
+  assert.equal(accepted.queue[0].priorityOrder, true);
+  assert.equal(accepted.queue[0].spendMultiplier, 2.2);
+  assert.equal(accepted.queue[1].id, 'regular');
+});
+
+test('completed Priority Orders pay the premium and grant bonus Heat', () => {
+  const state = { ...createInitialState(), eventCooldown: 999, priorityOfferCooldown: 999, activeOrders: [{ id: 'priority-brew', itemId: 'basic-chai', remaining: 2, waited: 0, customerTypeId: 'student', customerEmoji: '🎒', customerName: 'Student', spendMultiplier: 2.2, priorityOrder: true }] };
+  const next = simulateTicks(state, 1);
+  assert.equal(next.priorityOrdersCompleted, 1);
+  assert.equal(next.totalServed, 1);
+  assert.equal(next.coins - state.coins, 18);
+  assert.ok(next.heatMeter > 25);
+});
+
+test('sub-minute offline time clears live tactical states and advances cooldowns', () => {
+  const state = createInitialState();
+  state.kettleBoostRemaining = 9;
+  state.kettleBoostCooldown = 20;
+  state.priorityOffer = { id: 'offline-offer', itemId: 'basic-chai', remaining: 5, customerTypeId: 'student', customerEmoji: '🎒', customerName: 'Student', spendMultiplier: 2.2 };
+  state.priorityOfferCooldown = 0;
+  const result = claimOfflineProgress(state, 10 * 1000);
+  assert.equal(result.offlineCoins, 0);
+  assert.equal(result.state.kettleBoostRemaining, 0);
+  assert.equal(result.state.kettleBoostCooldown, 10);
+  assert.equal(result.state.priorityOffer, null);
+  assert.equal(result.state.priorityOfferCooldown, 42);
+});
+
+test('save hydration clamps Priority Order state', () => {
+  const restored = hydrateState({ ...createInitialState(), priorityOffer: { id: 'saved-offer', itemId: 'basic-chai', remaining: 999, customerTypeId: 'student', customerEmoji: '🎒', customerName: 'Student', spendMultiplier: 99 }, priorityOfferCooldown: -5, priorityOrdersAccepted: 3.9, priorityOrdersCompleted: -2, priorityOrdersMissed: 4.7 });
+  assert.equal(restored.priorityOffer.remaining, 8);
+  assert.equal(restored.priorityOffer.spendMultiplier, 4);
+  assert.equal(restored.priorityOfferCooldown, 0);
+  assert.equal(restored.priorityOrdersAccepted, 3);
+  assert.equal(restored.priorityOrdersCompleted, 0);
+  assert.equal(restored.priorityOrdersMissed, 4);
 });

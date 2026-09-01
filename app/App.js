@@ -19,6 +19,7 @@ import { formatCoins, formatPercent } from './src/utils/formatters';
 import { pixelSprites } from './src/data/pixelSprites';
 import { GameDrawer } from './src/components/GameDrawer';
 import { GameFeedback } from './src/components/GameFeedback';
+import { PriorityOrderPrompt } from './src/components/PriorityOrderPrompt';
 import { VenueDecor } from './src/components/VenueDecor';
 
 const TABS = [
@@ -57,6 +58,7 @@ export default function App() {
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    acceptPriority,
     useKettleBoost,
     buyUpgrade,
     hireStaff,
@@ -187,6 +189,14 @@ export default function App() {
                 <Text style={styles.eventText}>⚡ {state.activeEvent.name.toUpperCase()} · {state.activeEvent.remaining}s</Text>
               </View>
             ) : null}
+
+            <PriorityOrderPrompt
+              offer={state.priorityOffer}
+              menuItems={menuItems}
+              queuePressure={queuePressure}
+              topOffset={state.activeEvent ? 34 : 6}
+              onAccept={acceptPriority}
+            />
 
             <View style={styles.stallRoof}>
               {Array.from({ length: 9 }).map((_, i) => <View key={i} style={styles.roofStripe} />)}

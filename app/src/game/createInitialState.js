@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 5;
+export const SAVE_SCHEMA_VERSION = 6;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -65,6 +65,11 @@ export const createInitialState = () => ({
   kettleBoostRemaining: 0,
   kettleBoostCooldown: 0,
   kettleBoostUses: 0,
+  priorityOffer: null,
+  priorityOfferCooldown: 22,
+  priorityOrdersAccepted: 0,
+  priorityOrdersCompleted: 0,
+  priorityOrdersMissed: 0,
   venueUnlockedToast: null,
   claimedMilestoneIds: [],
   dailyObjectives: {
@@ -132,6 +137,22 @@ const sanitizeObjective = (objective) => {
 
 const sanitizeCustomerList = (value) => (Array.isArray(value) ? value.filter((entry) => entry && typeof entry === 'object') : []);
 
+const sanitizePriorityOffer = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const itemId = typeof value.itemId === 'string' && validMenuIds.has(value.itemId) ? value.itemId : null;
+  const remaining = Math.min(8, Math.max(0, toFiniteNumber(value.remaining, 0)));
+  if (!itemId || remaining <= 0) return null;
+  return {
+    id: typeof value.id === 'string' ? value.id : 'priority-offer',
+    itemId,
+    remaining,
+    customerTypeId: typeof value.customerTypeId === 'string' ? value.customerTypeId : 'regular',
+    customerEmoji: typeof value.customerEmoji === 'string' ? value.customerEmoji : '⚡',
+    customerName: typeof value.customerName === 'string' ? value.customerName : 'Priority Guest',
+    spendMultiplier: Math.min(4, Math.max(1, toFiniteNumber(value.spendMultiplier, 2.2))),
+  };
+};
+
 const sanitizeDailyProgress = (value) => {
   const progress = value && typeof value === 'object' ? value : {};
   return {
@@ -165,6 +186,11 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     kettleBoostRemaining: Math.min(12, Math.max(0, toFiniteNumber(saved.kettleBoostRemaining, base.kettleBoostRemaining))),
     kettleBoostCooldown: Math.min(28, Math.max(0, toFiniteNumber(saved.kettleBoostCooldown, base.kettleBoostCooldown))),
     kettleBoostUses: Math.max(0, Math.floor(toFiniteNumber(saved.kettleBoostUses, base.kettleBoostUses))),
+    priorityOffer: sanitizePriorityOffer(saved.priorityOffer),
+    priorityOfferCooldown: Math.min(90, Math.max(0, toFiniteNumber(saved.priorityOfferCooldown, base.priorityOfferCooldown))),
+    priorityOrdersAccepted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersAccepted, base.priorityOrdersAccepted))),
+    priorityOrdersCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersCompleted, base.priorityOrdersCompleted))),
+    priorityOrdersMissed: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersMissed, base.priorityOrdersMissed))),
     claimedMilestoneIds: Array.isArray(saved.claimedMilestoneIds)
       ? [...new Set(saved.claimedMilestoneIds.filter((id) => typeof id === 'string' && validMilestoneIds.has(id)))]
       : base.claimedMilestoneIds,
@@ -215,6 +241,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   const allowedMenuIds = new Set(sanitized.unlockedMenu);
   sanitized.queue = sanitized.queue.filter((customer) => allowedMenuIds.has(customer.itemId));
   sanitized.activeOrders = sanitized.activeOrders.filter((order) => allowedMenuIds.has(order.itemId));
+  if (sanitized.priorityOffer && !allowedMenuIds.has(sanitized.priorityOffer.itemId)) {
+    sanitized.priorityOffer = null;
+  }
 
   return sanitized;
 };

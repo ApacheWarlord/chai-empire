@@ -9,6 +9,7 @@ import {
 import { LEGACY_SAVE_KEY, SAVE_BACKUP_KEY, SAVE_KEY, SAVE_RECOVERY_META_KEY } from '../game/saveRecovery';
 import { bootGameState } from '../game/bootGameState';
 import {
+  acceptPriorityOrder,
   activateKettleBoost,
   buyTrackUpgrade,
   claimDailyObjective,
@@ -133,6 +134,7 @@ export const useGameState = () => {
   const tutorialStep = useMemo(() => getTutorialStep(state), [state]);
   const bottleneck = useMemo(() => getBottleneck(state), [state]);
 
+  const acceptPriority = useCallback(() => setState((current) => acceptPriorityOrder(current)), []);
   const useKettleBoost = useCallback(() => setState((current) => activateKettleBoost(current)), []);
   const buyUpgrade = useCallback((id) => setState((current) => buyTrackUpgrade(current, id)), []);
   const hireStaff = useCallback((id) => setState((current) => unlockStaff(current, id)), []);
@@ -166,6 +168,7 @@ export const useGameState = () => {
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    acceptPriority,
     useKettleBoost,
     buyUpgrade,
     hireStaff,
