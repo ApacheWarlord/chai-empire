@@ -28,6 +28,7 @@ import {
   simulateTicks,
   prepareSessionReward,
   resolvePendingReward,
+  shooThief,
   unlockMenuItem,
   unlockNextVenue,
   unlockStaff,
@@ -140,6 +141,7 @@ export const useGameState = () => {
   const serviceChoices = useMemo(() => getServiceChoices(state), [state]);
 
   const acceptPriority = useCallback(() => setState((current) => acceptPriorityOrder(current)), []);
+  const chaseThief = useCallback(() => setState((current) => shooThief(current)), []);
   const useKettleBoost = useCallback(() => setState((current) => activateKettleBoost(current)), []);
   const buyUpgrade = useCallback((id) => setState((current) => buyTrackUpgrade(current, id)), []);
   const hireStaff = useCallback((id) => setState((current) => unlockStaff(current, id)), []);
@@ -181,6 +183,7 @@ export const useGameState = () => {
     openSessionReward,
     claimPendingReward,
     acceptPriority,
+    chaseThief,
     useKettleBoost,
     buyUpgrade,
     hireStaff,

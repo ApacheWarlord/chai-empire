@@ -31,6 +31,7 @@ export function GameFeedback({ state }) {
   const prevPriorityAccepted = useRef(state.priorityOrdersAccepted || 0);
   const prevPriorityCompleted = useRef(state.priorityOrdersCompleted || 0);
   const prevPriorityMissed = useRef(state.priorityOrdersMissed || 0);
+  const prevThiefOutcomeSequence = useRef(state.lastThiefOutcome?.sequence || 0);
   const [feedback, setFeedback] = useState({ message: '', tone: 'good' });
   const animation = useRef(null);
 
@@ -66,8 +67,15 @@ export function GameFeedback({ state }) {
     const priorityAccepted = state.priorityOrdersAccepted || 0;
     const priorityCompleted = state.priorityOrdersCompleted || 0;
     const priorityMissed = state.priorityOrdersMissed || 0;
+    const thiefOutcomeSequence = state.lastThiefOutcome?.sequence || 0;
 
-    if (priorityCompleted > prevPriorityCompleted.current) {
+    if (thiefOutcomeSequence > prevThiefOutcomeSequence.current) {
+      if (state.lastThiefOutcome.type === 'shooed') {
+        showMessage('💨 THIEF CHASED OFF · +6 HEAT', 'gold');
+      } else {
+        showMessage(`🥷 BISCUIT JAR RAID · -${state.lastThiefOutcome.amount}`, 'hot');
+      }
+    } else if (priorityCompleted > prevPriorityCompleted.current) {
       showMessage(`★ EXPRESS SERVED · +${formatCoins(Math.max(0, coinDelta))}`, 'gold');
     } else if (priorityAccepted > prevPriorityAccepted.current) {
       showMessage('⚡ EXPRESS TICKET LOCKED', 'event');
@@ -105,6 +113,7 @@ export function GameFeedback({ state }) {
     prevPriorityAccepted.current = priorityAccepted;
     prevPriorityCompleted.current = priorityCompleted;
     prevPriorityMissed.current = priorityMissed;
+    prevThiefOutcomeSequence.current = thiefOutcomeSequence;
   }, [
     state.totalServed,
     state.lifetimeCoins,
@@ -117,6 +126,7 @@ export function GameFeedback({ state }) {
     state.priorityOrdersAccepted,
     state.priorityOrdersCompleted,
     state.priorityOrdersMissed,
+    state.lastThiefOutcome,
     upgradeScore,
     rushTier.id,
     rushTier.label,

@@ -65,6 +65,7 @@ export default function App() {
     openSessionReward,
     claimPendingReward,
     acceptPriority,
+    chaseThief,
     useKettleBoost,
     buyUpgrade,
     hireStaff,
@@ -211,6 +212,24 @@ export default function App() {
               onAccept={acceptPriority}
             />
 
+            {state.thiefEvent ? (
+              <View style={styles.thiefAlert} accessibilityLiveRegion="assertive">
+                <View style={styles.thiefCopy}>
+                  <Text style={styles.thiefTitle}>⚠ BISCUIT THIEF!</Text>
+                  <Text style={styles.thiefSub}>PROTECT {formatCoins(state.thiefEvent.stealAmount)} · {Math.ceil(state.thiefEvent.remaining)}s</Text>
+                  <PixelBar progress={state.thiefEvent.remaining / state.thiefEvent.duration} danger />
+                </View>
+                <TouchableOpacity
+                  style={styles.shooButton}
+                  onPress={chaseThief}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Shoo biscuit thief, ${Math.ceil(state.thiefEvent.remaining)} seconds remaining`}
+                >
+                  <Text style={styles.shooButtonText}>SHOO!</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {state.serviceStreak >= 3 ? (
               <View style={styles.streakChip}>
                 <Text style={styles.streakChipText}>🔥 {state.serviceStreak} STREAK</Text>
@@ -254,6 +273,14 @@ export default function App() {
                 <Text style={styles.counterText}>CHAI PE CHARCHA, YAAR!</Text>
               </View>
             </View>
+
+            {state.thiefEvent ? (
+              <View style={styles.thiefSprite} pointerEvents="none">
+                <Text style={styles.thiefBag}>▧</Text>
+                <Text style={styles.thiefFace}>🥷</Text>
+                <Text style={styles.thiefSneak}>SNEAK!</Text>
+              </View>
+            ) : null}
 
             <View style={styles.queueRoad}>
               {queuePreview.length ? queuePreview.map((customer, index) => {
@@ -668,6 +695,12 @@ const styles = StyleSheet.create({
   cityBlock: { flex: 1, height: 22, backgroundColor: '#8B735C', borderTopWidth: 3, borderColor: '#66523E' },
   eventRibbon: { position: 'absolute', top: 4, left: 8, right: 78, backgroundColor: C.orange, borderWidth: 2, borderColor: '#7D2C0B', padding: 4, zIndex: 10 },
   eventText: { color: '#FFF0BF', fontSize: 9, fontWeight: '900' },
+  thiefAlert: { position: 'absolute', top: 4, left: 7, right: 7, minHeight: 58, zIndex: 30, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#751F18', borderWidth: 3, borderColor: '#FFCD43', padding: 6, ...pixelShadow },
+  thiefCopy: { flex: 1, gap: 3 },
+  thiefTitle: { color: '#FFF3C8', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  thiefSub: { color: '#FFD76A', fontSize: 8, fontWeight: '900' },
+  shooButton: { minWidth: 82, minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E96B1B', borderWidth: 3, borderColor: '#6E210B' },
+  shooButtonText: { color: '#FFF8DA', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
   stallRoof: { position: 'absolute', top: 104, left: '6%', right: '6%', height: 28, backgroundColor: '#56514B', borderWidth: 3, borderColor: '#2A2723', flexDirection: 'row', overflow: 'hidden' },
   roofStripe: { flex: 1, borderRightWidth: 2, borderColor: '#302E2A', backgroundColor: '#78716A' },
   stallBody: { position: 'absolute', top: 126, left: '8%', right: '8%', height: 164, backgroundColor: '#2B251F', borderWidth: 4, borderColor: C.wood },
@@ -686,6 +719,10 @@ const styles = StyleSheet.create({
   brewingLabel: { color: '#F4D98F', fontSize: 7, fontWeight: '900', marginTop: 2 },
   counterFront: { height: 42, backgroundColor: '#8A4B20', borderTopWidth: 4, borderColor: '#3B1C0A', alignItems: 'center', justifyContent: 'center' },
   counterText: { color: '#F4D98F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  thiefSprite: { position: 'absolute', right: '8%', top: 224, zIndex: 16, alignItems: 'center', flexDirection: 'row', backgroundColor: '#2B182D', borderWidth: 2, borderColor: '#F0A526', paddingHorizontal: 5, paddingVertical: 2, transform: [{ rotate: '-3deg' }] },
+  thiefFace: { fontSize: 30 },
+  thiefBag: { color: '#E8BF67', fontSize: 20, fontWeight: '900' },
+  thiefSneak: { color: '#FFD868', fontSize: 7, fontWeight: '900', marginLeft: 2 },
   queueRoad: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 95, backgroundColor: C.road, borderTopWidth: 5, borderColor: '#B49A6E', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-evenly', paddingBottom: 5, paddingHorizontal: 4 },
   customerSlot: { width: '18%', alignItems: 'center', justifyContent: 'flex-end' },
   orderBubble: { minWidth: 28, height: 24, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: '#6F431C', alignItems: 'center', justifyContent: 'center', marginBottom: -2, zIndex: 3 },

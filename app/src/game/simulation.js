@@ -19,6 +19,10 @@ const PRIORITY_OFFER_COOLDOWN_SECONDS = 42;
 const PRIORITY_ORDER_PAYOUT_MULTIPLIER = 2.2;
 const PRIORITY_ORDER_HEAT_BONUS = 12;
 const SERVICE_CHOICE_COOLDOWN_SECONDS = 12;
+const THIEF_DURATION_SECONDS = 7;
+const THIEF_COOLDOWN_SECONDS = 75;
+const THIEF_SPAWN_CHANCE = 0.04;
+const THIEF_SHOO_HEAT_BONUS = 6;
 
 export const SERVICE_CHOICES = [
   { id: 'quick-pour', label: 'Quick Pour', icon: '⚡', blurb: 'Finish the oldest brew now · costs 18 Heat' },
@@ -338,14 +342,59 @@ const tickPriorityOffer = (state) => {
   }
 
   const cooldown = Math.max(0, (state.priorityOfferCooldown || 0) - TICK_SECONDS);
-  if (cooldown > 0 || state.activeEvent) {
+  if (cooldown > 0 || state.activeEvent || state.thiefEvent) {
     return { ...state, priorityOfferCooldown: cooldown };
   }
   return createPriorityOffer({ ...state, priorityOfferCooldown: 0 });
 };
 
+const getThiefStealAmount = (state) => Math.min(35, Math.max(0, Math.min(Math.floor(state.coins), Math.max(6, Math.round(state.coins * 0.08)))));
+
+const resolveThief = (state, type) => {
+  const thief = state.thiefEvent;
+  if (!thief || state.thiefResolutionLedger?.includes(thief.id)) return state;
+  const amount = type === 'stolen' ? Math.min(state.coins, thief.stealAmount) : 0;
+  const sequence = (state.lastThiefOutcome?.sequence || 0) + 1;
+  return {
+    ...state,
+    coins: Math.max(0, state.coins - amount),
+    heatMeter: type === 'shooed' ? Math.min(100, (state.heatMeter || 0) + THIEF_SHOO_HEAT_BONUS) : state.heatMeter,
+    thiefEvent: null,
+    thiefCooldown: THIEF_COOLDOWN_SECONDS,
+    thievesShooed: (state.thievesShooed || 0) + (type === 'shooed' ? 1 : 0),
+    thiefThefts: (state.thiefThefts || 0) + (type === 'stolen' ? 1 : 0),
+    thiefResolutionLedger: [...(state.thiefResolutionLedger || []), thief.id].slice(-50),
+    lastThiefOutcome: { id: thief.id, type, amount, sequence },
+  };
+};
+
+const tickThief = (state) => {
+  if (state.thiefEvent) {
+    const remaining = state.thiefEvent.remaining - TICK_SECONDS;
+    if (remaining <= 0) return resolveThief(state, 'stolen');
+    return { ...state, thiefEvent: { ...state.thiefEvent, remaining } };
+  }
+  const cooldown = Math.max(0, (state.thiefCooldown || 0) - TICK_SECONDS);
+  if (cooldown > 0 || state.priorityOffer || state.activeEvent || Math.random() > THIEF_SPAWN_CHANCE) {
+    return { ...state, thiefCooldown: cooldown };
+  }
+  const thiefSequence = (state.thiefSequence || 0) + 1;
+  return {
+    ...state,
+    thiefSequence,
+    thiefEvent: {
+      id: `thief-${thiefSequence}`,
+      remaining: THIEF_DURATION_SECONDS,
+      duration: THIEF_DURATION_SECONDS,
+      stealAmount: getThiefStealAmount(state),
+    },
+  };
+};
+
+export const shooThief = (state) => resolveThief(state, 'shooed');
+
 const maybeStartEvent = (state) => {
-  if (state.activeEvent || state.eventCooldown > 0 || Math.random() > 0.08) {
+  if (state.activeEvent || state.priorityOffer || state.thiefEvent || state.eventCooldown > 0 || Math.random() > 0.08) {
     return state;
   }
   const event = gameEvents[Math.floor(Math.random() * gameEvents.length)];
@@ -367,7 +416,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
   let state = ensureDailyObjectives({ ...inputState, queue: [...inputState.queue], activeOrders: [...inputState.activeOrders] });
 
   for (let second = 0; second < totalSeconds; second += 1) {
-    state = tickPriorityOffer(tickEvent(maybeStartEvent(state)));
+    state = tickThief(tickPriorityOffer(tickEvent(maybeStartEvent(state))));
     const stats = getDerivedStats(state);
     const entries = getUnlockedMenuEntries(state);
 
@@ -754,6 +803,10 @@ export const claimOfflineProgress = (state, elapsedMs) => {
     priorityOfferCooldown: state.priorityOffer
       ? PRIORITY_OFFER_COOLDOWN_SECONDS
       : Math.max(0, (state.priorityOfferCooldown || 0) - elapsedSeconds),
+    thiefEvent: null,
+    thiefCooldown: state.thiefEvent
+      ? THIEF_COOLDOWN_SECONDS
+      : Math.max(0, (state.thiefCooldown || 0) - elapsedSeconds),
   };
 
   if (elapsedMinutes <= 0) return { state: timedState, offlineCoins: 0 };

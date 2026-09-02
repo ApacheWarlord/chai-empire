@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 7;
+export const SAVE_SCHEMA_VERSION = 8;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -70,6 +70,13 @@ export const createInitialState = () => ({
   priorityOrdersAccepted: 0,
   priorityOrdersCompleted: 0,
   priorityOrdersMissed: 0,
+  thiefEvent: null,
+  thiefCooldown: 70,
+  thiefSequence: 0,
+  thievesShooed: 0,
+  thiefThefts: 0,
+  thiefResolutionLedger: [],
+  lastThiefOutcome: null,
   serviceChoice: { sequence: 0, cooldown: 4, lastChoiceId: null },
   sessionRun: { run: 1, served: 0, target: 6, reward: 90, rewardId: null },
   rewardLedger: [],
@@ -157,6 +164,29 @@ const sanitizePriorityOffer = (value) => {
   };
 };
 
+const sanitizeThiefEvent = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const remaining = Math.min(7, Math.max(0, toFiniteNumber(value.remaining, 0)));
+  if (remaining <= 0) return null;
+  return {
+    id: typeof value.id === 'string' ? value.id : 'thief-0',
+    remaining,
+    duration: 7,
+    stealAmount: clampInteger(value.stealAmount, 6, 0, 35),
+  };
+};
+
+const sanitizeThiefOutcome = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
+  if (!['shooed', 'stolen'].includes(value.type)) return null;
+  return {
+    id: value.id,
+    type: value.type,
+    amount: clampInteger(value.amount, 0, 0, 35),
+    sequence: clampInteger(value.sequence, 0, 0, 1000000),
+  };
+};
+
 const sanitizeServiceChoice = (value, base) => {
   const source = value && typeof value === 'object' ? value : {};
   return {
@@ -229,6 +259,15 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     priorityOrdersAccepted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersAccepted, base.priorityOrdersAccepted))),
     priorityOrdersCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersCompleted, base.priorityOrdersCompleted))),
     priorityOrdersMissed: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersMissed, base.priorityOrdersMissed))),
+    thiefEvent: sanitizeThiefEvent(saved.thiefEvent),
+    thiefCooldown: Math.min(180, Math.max(0, toFiniteNumber(saved.thiefCooldown, base.thiefCooldown))),
+    thiefSequence: clampInteger(saved.thiefSequence, base.thiefSequence, 0, 1000000),
+    thievesShooed: Math.max(0, Math.floor(toFiniteNumber(saved.thievesShooed, base.thievesShooed))),
+    thiefThefts: Math.max(0, Math.floor(toFiniteNumber(saved.thiefThefts, base.thiefThefts))),
+    thiefResolutionLedger: Array.isArray(saved.thiefResolutionLedger)
+      ? [...new Set(saved.thiefResolutionLedger.filter((id) => typeof id === 'string'))].slice(-50)
+      : base.thiefResolutionLedger,
+    lastThiefOutcome: sanitizeThiefOutcome(saved.lastThiefOutcome),
     serviceChoice: sanitizeServiceChoice(saved.serviceChoice, base.serviceChoice),
     sessionRun: sanitizeSessionRun(saved.sessionRun, base.sessionRun),
     rewardLedger: Array.isArray(saved.rewardLedger)
@@ -290,6 +329,13 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   sanitized.activeOrders = sanitized.activeOrders.filter((order) => allowedMenuIds.has(order.itemId));
   if (sanitized.priorityOffer && !allowedMenuIds.has(sanitized.priorityOffer.itemId)) {
     sanitized.priorityOffer = null;
+  }
+  if (sanitized.thiefEvent && sanitized.thiefResolutionLedger.includes(sanitized.thiefEvent.id)) {
+    sanitized.thiefEvent = null;
+  }
+  if (sanitized.thiefEvent) {
+    sanitized.priorityOffer = null;
+    sanitized.activeEvent = null;
   }
 
   return sanitized;
