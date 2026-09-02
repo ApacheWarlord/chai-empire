@@ -22,7 +22,6 @@ const SERVICE_CHOICE_COOLDOWN_SECONDS = 12;
 const THIEF_DURATION_SECONDS = 7;
 const THIEF_COOLDOWN_SECONDS = 75;
 const THIEF_SPAWN_CHANCE = 0.04;
-const THIEF_SHOO_HEAT_BONUS = 6;
 
 export const SERVICE_CHOICES = [
   { id: 'quick-pour', label: 'Quick Pour', icon: '⚡', blurb: 'Finish the oldest brew now · costs 18 Heat' },
@@ -354,17 +353,23 @@ const resolveThief = (state, type) => {
   const thief = state.thiefEvent;
   if (!thief || state.thiefResolutionLedger?.includes(thief.id)) return state;
   const amount = type === 'stolen' ? Math.min(state.coins, thief.stealAmount) : 0;
+  const grade = type === 'stolen' ? 'stolen' : thief.remaining >= 5 ? 'perfect' : thief.remaining >= 3 ? 'quick' : 'close';
+  const heatBonus = grade === 'perfect' ? 10 : grade === 'quick' ? 6 : grade === 'close' ? 3 : 0;
+  const thiefStreak = type === 'shooed' ? (state.thiefStreak || 0) + 1 : 0;
   const sequence = (state.lastThiefOutcome?.sequence || 0) + 1;
   return {
     ...state,
     coins: Math.max(0, state.coins - amount),
-    heatMeter: type === 'shooed' ? Math.min(100, (state.heatMeter || 0) + THIEF_SHOO_HEAT_BONUS) : state.heatMeter,
+    heatMeter: Math.min(100, (state.heatMeter || 0) + heatBonus),
     thiefEvent: null,
     thiefCooldown: THIEF_COOLDOWN_SECONDS,
     thievesShooed: (state.thievesShooed || 0) + (type === 'shooed' ? 1 : 0),
     thiefThefts: (state.thiefThefts || 0) + (type === 'stolen' ? 1 : 0),
+    thiefStreak,
+    bestThiefStreak: Math.max(state.bestThiefStreak || 0, thiefStreak),
+    perfectShoos: (state.perfectShoos || 0) + (grade === 'perfect' ? 1 : 0),
     thiefResolutionLedger: [...(state.thiefResolutionLedger || []), thief.id].slice(-50),
-    lastThiefOutcome: { id: thief.id, type, amount, sequence },
+    lastThiefOutcome: { id: thief.id, type, amount, grade, heatBonus, sequence },
   };
 };
 

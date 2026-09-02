@@ -226,6 +226,10 @@ function RushPanel({ state, stats, onUseKettleBoost }) {
         <Metric label="AVG TICKET" value={formatCoins(stats.averagePayout)} />
         <Metric label="EXPRESS TAKEN" value={state.priorityOrdersAccepted || 0} />
         <Metric label="EXPRESS SERVED" value={state.priorityOrdersCompleted || 0} />
+        <Metric label="THIEVES SHOOED" value={state.thievesShooed || 0} />
+        <Metric label="PERFECT CATCHES" value={state.perfectShoos || 0} />
+        <Metric label="GUARD STREAK" value={state.thiefStreak || 0} />
+        <Metric label="BEST GUARD" value={state.bestThiefStreak || 0} />
       </View>
 
       <View style={styles.card}>

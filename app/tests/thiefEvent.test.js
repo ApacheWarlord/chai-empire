@@ -38,24 +38,32 @@ test('urgent prompts block thief spawns', () => {
   }
 });
 
-test('shooing a thief prevents loss, awards small Heat, and resolves only once', () => {
+test('fast shooing earns a perfect reaction grade, streak, and stronger Heat reward', () => {
   const state = { ...createInitialState(), coins: 100, heatMeter: 10, thiefEvent: liveThief() };
   const shooed = shooThief(state);
   assert.equal(shooed.coins, 100);
-  assert.equal(shooed.heatMeter, 16);
+  assert.equal(shooed.heatMeter, 20);
   assert.equal(shooed.thievesShooed, 1);
+  assert.equal(shooed.thiefStreak, 1);
+  assert.equal(shooed.bestThiefStreak, 1);
+  assert.equal(shooed.perfectShoos, 1);
   assert.equal(shooed.lastThiefOutcome.type, 'shooed');
+  assert.equal(shooed.lastThiefOutcome.grade, 'perfect');
+  assert.equal(shooed.lastThiefOutcome.heatBonus, 10);
   assert.deepEqual(shooed.thiefResolutionLedger, ['thief-7']);
   assert.strictEqual(shooThief(shooed), shooed);
 });
 
 test('an ignored thief steals a bounded amount exactly once', () => {
-  const state = { ...createInitialState(), coins: 100, eventCooldown: 999, priorityOfferCooldown: 999, thiefEvent: liveThief({ remaining: 1 }) };
+  const state = { ...createInitialState(), coins: 100, thiefStreak: 4, bestThiefStreak: 4, eventCooldown: 999, priorityOfferCooldown: 999, thiefEvent: liveThief({ remaining: 1 }) };
   const stolen = simulateTicks(state, 1);
   assert.equal(stolen.coins, 88);
   assert.equal(stolen.thiefThefts, 1);
   assert.equal(stolen.lastThiefOutcome.type, 'stolen');
   assert.equal(stolen.lastThiefOutcome.amount, 12);
+  assert.equal(stolen.lastThiefOutcome.grade, 'stolen');
+  assert.equal(stolen.thiefStreak, 0);
+  assert.equal(stolen.bestThiefStreak, 4);
   const next = simulateTicks(stolen, 1);
   assert.equal(next.coins, 88);
   assert.equal(next.thiefThefts, 1);
@@ -69,8 +77,11 @@ test('save hydration preserves and sanitizes thief state', () => {
     thiefSequence: 3.9,
     thievesShooed: -2,
     thiefThefts: 4.8,
+    thiefStreak: 3.9,
+    bestThiefStreak: 1,
+    perfectShoos: 2.9,
     thiefResolutionLedger: ['thief-1', 'thief-1', 3],
-    lastThiefOutcome: { id: 'thief-1', type: 'stolen', amount: 999, sequence: 2.9 },
+    lastThiefOutcome: { id: 'thief-1', type: 'stolen', amount: 999, grade: 'broken', heatBonus: 99, sequence: 2.9 },
   });
   assert.equal(restored.thiefEvent.remaining, 7);
   assert.equal(restored.thiefEvent.stealAmount, 35);
@@ -78,9 +89,23 @@ test('save hydration preserves and sanitizes thief state', () => {
   assert.equal(restored.thiefSequence, 3);
   assert.equal(restored.thievesShooed, 0);
   assert.equal(restored.thiefThefts, 4);
+  assert.equal(restored.thiefStreak, 3);
+  assert.equal(restored.bestThiefStreak, 3);
+  assert.equal(restored.perfectShoos, 2);
   assert.deepEqual(restored.thiefResolutionLedger, ['thief-1']);
   assert.equal(restored.lastThiefOutcome.amount, 35);
+  assert.equal(restored.lastThiefOutcome.grade, 'stolen');
+  assert.equal(restored.lastThiefOutcome.heatBonus, 0);
   assert.equal(serializeStateForSave(restored).state.thiefEvent.id, 'thief-7');
+});
+
+test('slower reactions earn quick and close grades with smaller Heat bonuses', () => {
+  const quick = shooThief({ ...createInitialState(), thiefEvent: liveThief({ remaining: 4 }) });
+  assert.equal(quick.lastThiefOutcome.grade, 'quick');
+  assert.equal(quick.heatMeter, 6);
+  const close = shooThief({ ...createInitialState(), thiefEvent: liveThief({ remaining: 2 }) });
+  assert.equal(close.lastThiefOutcome.grade, 'close');
+  assert.equal(close.heatMeter, 3);
 });
 
 test('hydration removes already-resolved or conflicting urgent thief state', () => {

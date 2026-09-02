@@ -71,7 +71,8 @@ export function GameFeedback({ state }) {
 
     if (thiefOutcomeSequence > prevThiefOutcomeSequence.current) {
       if (state.lastThiefOutcome.type === 'shooed') {
-        showMessage('💨 THIEF CHASED OFF · +6 HEAT', 'gold');
+        const grade = state.lastThiefOutcome.grade === 'perfect' ? 'PERFECT CATCH' : state.lastThiefOutcome.grade === 'quick' ? 'QUICK SAVE' : 'CLOSE CALL';
+        showMessage(`💨 ${grade} · +${state.lastThiefOutcome.heatBonus} HEAT`, 'gold');
       } else {
         showMessage(`🥷 BISCUIT JAR RAID · -${state.lastThiefOutcome.amount}`, 'hot');
       }

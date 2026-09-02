@@ -41,6 +41,7 @@ const customerSprites = {
 
 const getShortfall = (coins, cost) => Math.max(0, cost - coins);
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const getThiefReactionCopy = (remaining) => remaining >= 5 ? 'PERFECT +10 HEAT' : remaining >= 3 ? 'QUICK +6 HEAT' : 'CLOSE CALL +3 HEAT';
 
 export default function App() {
   const { width } = useWindowDimensions();
@@ -216,7 +217,7 @@ export default function App() {
               <View style={styles.thiefAlert} accessibilityLiveRegion="assertive">
                 <View style={styles.thiefCopy}>
                   <Text style={styles.thiefTitle}>⚠ BISCUIT THIEF!</Text>
-                  <Text style={styles.thiefSub}>PROTECT {formatCoins(state.thiefEvent.stealAmount)} · {Math.ceil(state.thiefEvent.remaining)}s</Text>
+                  <Text style={styles.thiefSub}>PROTECT {formatCoins(state.thiefEvent.stealAmount)} · {Math.ceil(state.thiefEvent.remaining)}s · {getThiefReactionCopy(state.thiefEvent.remaining)}</Text>
                   <PixelBar progress={state.thiefEvent.remaining / state.thiefEvent.duration} danger />
                 </View>
                 <TouchableOpacity
@@ -274,13 +275,7 @@ export default function App() {
               </View>
             </View>
 
-            {state.thiefEvent ? (
-              <View style={styles.thiefSprite} pointerEvents="none">
-                <Text style={styles.thiefBag}>▧</Text>
-                <Text style={styles.thiefFace}>🥷</Text>
-                <Text style={styles.thiefSneak}>SNEAK!</Text>
-              </View>
-            ) : null}
+            {state.thiefEvent ? <ThiefSprite remaining={state.thiefEvent.remaining} /> : null}
 
             <View style={styles.queueRoad}>
               {queuePreview.length ? queuePreview.map((customer, index) => {
@@ -465,6 +460,36 @@ function Sprite({ source, size, animated = false, delay = 0 }) {
       style={[imageStyle, { transform: [{ translateY: bob }] }]}
       resizeMode="contain"
     />
+  );
+}
+
+function ThiefSprite({ remaining }) {
+  const sneak = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sneak, { toValue: 1, duration: remaining <= 3 ? 90 : 180, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(sneak, { toValue: 0, duration: remaining <= 3 ? 90 : 180, useNativeDriver: USE_NATIVE_DRIVER }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [remaining <= 3, sneak]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.thiefSprite,
+        remaining <= 3 && styles.thiefSpriteCritical,
+        { transform: [{ translateX: sneak.interpolate({ inputRange: [0, 1], outputRange: [-5, 3] }) }, { rotate: '-3deg' }] },
+      ]}
+    >
+      <Text style={styles.thiefBag}>▧</Text>
+      <Text style={styles.thiefFace}>🥷</Text>
+      <Text style={styles.thiefSneak}>{remaining <= 3 ? 'GRAB!' : 'SNEAK!'}</Text>
+    </Animated.View>
   );
 }
 
@@ -719,7 +744,8 @@ const styles = StyleSheet.create({
   brewingLabel: { color: '#F4D98F', fontSize: 7, fontWeight: '900', marginTop: 2 },
   counterFront: { height: 42, backgroundColor: '#8A4B20', borderTopWidth: 4, borderColor: '#3B1C0A', alignItems: 'center', justifyContent: 'center' },
   counterText: { color: '#F4D98F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  thiefSprite: { position: 'absolute', right: '8%', top: 224, zIndex: 16, alignItems: 'center', flexDirection: 'row', backgroundColor: '#2B182D', borderWidth: 2, borderColor: '#F0A526', paddingHorizontal: 5, paddingVertical: 2, transform: [{ rotate: '-3deg' }] },
+  thiefSprite: { position: 'absolute', right: '8%', top: 224, zIndex: 16, alignItems: 'center', flexDirection: 'row', backgroundColor: '#2B182D', borderWidth: 2, borderColor: '#F0A526', paddingHorizontal: 5, paddingVertical: 2 },
+  thiefSpriteCritical: { backgroundColor: '#681C18', borderColor: '#FFEC62' },
   thiefFace: { fontSize: 30 },
   thiefBag: { color: '#E8BF67', fontSize: 20, fontWeight: '900' },
   thiefSneak: { color: '#FFD868', fontSize: 7, fontWeight: '900', marginLeft: 2 },

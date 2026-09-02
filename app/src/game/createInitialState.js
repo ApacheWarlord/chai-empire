@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 8;
+export const SAVE_SCHEMA_VERSION = 9;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -75,6 +75,9 @@ export const createInitialState = () => ({
   thiefSequence: 0,
   thievesShooed: 0,
   thiefThefts: 0,
+  thiefStreak: 0,
+  bestThiefStreak: 0,
+  perfectShoos: 0,
   thiefResolutionLedger: [],
   lastThiefOutcome: null,
   serviceChoice: { sequence: 0, cooldown: 4, lastChoiceId: null },
@@ -179,10 +182,13 @@ const sanitizeThiefEvent = (value) => {
 const sanitizeThiefOutcome = (value) => {
   if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
   if (!['shooed', 'stolen'].includes(value.type)) return null;
+  const grade = ['perfect', 'quick', 'close', 'stolen'].includes(value.grade) ? value.grade : value.type;
   return {
     id: value.id,
     type: value.type,
     amount: clampInteger(value.amount, 0, 0, 35),
+    grade,
+    heatBonus: grade === 'stolen' ? 0 : clampInteger(value.heatBonus, 0, 0, 10),
     sequence: clampInteger(value.sequence, 0, 0, 1000000),
   };
 };
@@ -264,6 +270,9 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     thiefSequence: clampInteger(saved.thiefSequence, base.thiefSequence, 0, 1000000),
     thievesShooed: Math.max(0, Math.floor(toFiniteNumber(saved.thievesShooed, base.thievesShooed))),
     thiefThefts: Math.max(0, Math.floor(toFiniteNumber(saved.thiefThefts, base.thiefThefts))),
+    thiefStreak: Math.max(0, Math.floor(toFiniteNumber(saved.thiefStreak, base.thiefStreak))),
+    bestThiefStreak: Math.max(0, Math.floor(toFiniteNumber(saved.bestThiefStreak, base.bestThiefStreak))),
+    perfectShoos: Math.max(0, Math.floor(toFiniteNumber(saved.perfectShoos, base.perfectShoos))),
     thiefResolutionLedger: Array.isArray(saved.thiefResolutionLedger)
       ? [...new Set(saved.thiefResolutionLedger.filter((id) => typeof id === 'string'))].slice(-50)
       : base.thiefResolutionLedger,
@@ -310,6 +319,7 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   sanitized.lifetimeCoins = Math.max(sanitized.lifetimeCoins, sanitized.coins);
   sanitized.premiumServed = Math.min(sanitized.premiumServed, sanitized.totalServed);
   sanitized.bestServiceStreak = Math.max(sanitized.bestServiceStreak, sanitized.serviceStreak);
+  sanitized.bestThiefStreak = Math.max(sanitized.bestThiefStreak, sanitized.thiefStreak);
   if (sanitized.pendingReward && sanitized.rewardLedger.includes(sanitized.pendingReward.id)) {
     sanitized.pendingReward = null;
   }
