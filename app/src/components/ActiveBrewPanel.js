@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Image, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const brewKettleArt = require('../../assets/artwork/active-brew-kettle.png');
 
 export function ActiveBrewPanel({ offer, brew, item, onStart, onTap }) {
   const pulse = useRef(new Animated.Value(1)).current;
@@ -20,6 +21,7 @@ export function ActiveBrewPanel({ offer, brew, item, onStart, onTap }) {
   if (offer) {
     return (
       <Animated.View style={[styles.panel, { transform: [{ scale: pulse }] }]} accessibilityLiveRegion="polite">
+        <Image source={brewKettleArt} style={styles.art} resizeMode="contain" accessibilityIgnoresInvertColors />
         <View style={styles.copy}>
           <Text style={styles.eyebrow}>★ ACTIVE BREW · {Math.ceil(offer.remaining)}s</Text>
           <Text numberOfLines={1} style={styles.title}>{item?.name?.toUpperCase() || 'CHAI'} TICKET</Text>
@@ -36,6 +38,7 @@ export function ActiveBrewPanel({ offer, brew, item, onStart, onTap }) {
   const progress = Math.max(0, Math.min(1, brew.stageRemaining / brew.stageDuration));
   return (
     <View style={[styles.panel, styles.livePanel]} accessibilityLiveRegion="assertive">
+      <Image source={brewKettleArt} style={styles.art} resizeMode="contain" accessibilityIgnoresInvertColors />
       <View style={styles.copy}>
         <Text style={styles.eyebrow}>{item?.orderBubble || '☕'} {item?.name?.toUpperCase()} · {brew.stageIndex + 1}/{brew.stages.length}</Text>
         <Text style={styles.title}>{stage}</Text>
@@ -56,6 +59,7 @@ export function ActiveBrewPanel({ offer, brew, item, onStart, onTap }) {
 const styles = StyleSheet.create({
   panel: { position: 'absolute', zIndex: 28, top: 150, left: '16%', right: '16%', minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#3A210E', borderWidth: 3, borderColor: '#F6B93B', padding: 7, shadowColor: '#000', shadowOpacity: 0.65, shadowRadius: 0, shadowOffset: { width: 3, height: 3 }, elevation: 9 },
   livePanel: { backgroundColor: '#513013', borderColor: '#8EC43F' },
+  art: { width: 42, height: 48 },
   copy: { flex: 1, gap: 2 },
   eyebrow: { color: '#F6B93B', fontSize: 7.5, fontWeight: '900', letterSpacing: 0.5 },
   title: { color: '#FFF3C8', fontSize: 13, fontWeight: '900', letterSpacing: 1 },

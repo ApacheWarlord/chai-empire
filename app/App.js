@@ -42,6 +42,8 @@ const customerSprites = {
 
 const getShortfall = (coins, cost) => Math.max(0, cost - coins);
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const roadsideDecorArt = require('./assets/artwork/roadside-decor.png');
+const perfectChaiBurstArt = require('./assets/artwork/perfect-chai-burst.png');
 const getThiefReactionCopy = (remaining) => remaining >= 5 ? 'PERFECT +10 HEAT' : remaining >= 3 ? 'QUICK +6 HEAT' : 'CLOSE CALL +3 HEAT';
 
 export default function App() {
@@ -290,6 +292,8 @@ export default function App() {
               </View>
             </View>
 
+            <Image source={roadsideDecorArt} style={styles.roadsideDecorArt} resizeMode="contain" accessibilityIgnoresInvertColors />
+
             {state.thiefEvent ? <ThiefSprite remaining={state.thiefEvent.remaining} /> : null}
 
             {state.customerReaction ? (
@@ -298,6 +302,7 @@ export default function App() {
                 <Text style={styles.customerReactionText}>{state.customerReaction.label}</Text>
               </View>
             ) : null}
+            {state.customerReaction ? <BrewArtBurst key={state.customerReaction.orderId} /> : null}
 
             <View style={styles.queueRoad}>
               {queuePreview.length ? queuePreview.map((customer, index) => {
@@ -513,6 +518,26 @@ function ThiefSprite({ remaining }) {
       <Text style={styles.thiefSneak}>{remaining <= 3 ? 'GRAB!' : 'SNEAK!'}</Text>
     </Animated.View>
   );
+}
+
+function BrewArtBurst() {
+  const scale = useRef(new Animated.Value(0.55)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.sequence([
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(opacity, { toValue: 1, duration: 130, useNativeDriver: USE_NATIVE_DRIVER }),
+      ]),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 320, useNativeDriver: USE_NATIVE_DRIVER }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [opacity, scale]);
+
+  return <Animated.Image pointerEvents="none" source={perfectChaiBurstArt} style={[styles.brewArtBurst, { opacity, transform: [{ scale }] }]} resizeMode="contain" />;
 }
 
 function HudPanel({ label, value, sub, icon, flex }) {
@@ -771,6 +796,8 @@ const styles = StyleSheet.create({
   thiefFace: { fontSize: 30 },
   thiefBag: { color: '#E8BF67', fontSize: 20, fontWeight: '900' },
   thiefSneak: { color: '#FFD868', fontSize: 7, fontWeight: '900', marginLeft: 2 },
+  roadsideDecorArt: { position: 'absolute', left: 2, bottom: 78, width: 92, height: 73, zIndex: 8 },
+  brewArtBurst: { position: 'absolute', left: '50%', top: 135, width: 120, height: 127, marginLeft: -60, zIndex: 19 },
   customerReaction: { position: 'absolute', right: 8, bottom: 102, zIndex: 20, maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: C.green, paddingHorizontal: 6, paddingVertical: 4 },
   customerReactionEmoji: { fontSize: 17 },
   customerReactionText: { flexShrink: 1, color: '#3A210E', fontSize: 7, fontWeight: '900' },
