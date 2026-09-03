@@ -12,6 +12,7 @@ import {
   acceptPriorityOrder,
   activateKettleBoost,
   buyTrackUpgrade,
+  cancelActiveBrew,
   claimDailyObjective,
   claimMilestoneReward,
   claimOfflineProgress,
@@ -29,6 +30,8 @@ import {
   prepareSessionReward,
   resolvePendingReward,
   shooThief,
+  startActiveBrew,
+  tapActiveBrewStage,
   unlockMenuItem,
   unlockNextVenue,
   unlockStaff,
@@ -118,7 +121,7 @@ export const useGameState = () => {
 
       if (nextStatus.match(/inactive|background/)) {
         setState((current) => {
-          const next = { ...current, lastTickAt: Date.now() };
+          const next = { ...cancelActiveBrew(current), lastTickAt: Date.now() };
           stateRef.current = next;
           persistState(next);
           return next;
@@ -142,6 +145,8 @@ export const useGameState = () => {
 
   const acceptPriority = useCallback(() => setState((current) => acceptPriorityOrder(current)), []);
   const chaseThief = useCallback(() => setState((current) => shooThief(current)), []);
+  const beginActiveBrew = useCallback(() => setState((current) => startActiveBrew(current)), []);
+  const tapBrewStage = useCallback(() => setState((current) => tapActiveBrewStage(current)), []);
   const useKettleBoost = useCallback(() => setState((current) => activateKettleBoost(current)), []);
   const buyUpgrade = useCallback((id) => setState((current) => buyTrackUpgrade(current, id)), []);
   const hireStaff = useCallback((id) => setState((current) => unlockStaff(current, id)), []);
@@ -184,6 +189,8 @@ export const useGameState = () => {
     claimPendingReward,
     acceptPriority,
     chaseThief,
+    beginActiveBrew,
+    tapBrewStage,
     useKettleBoost,
     buyUpgrade,
     hireStaff,

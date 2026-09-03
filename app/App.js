@@ -23,6 +23,7 @@ import { PriorityOrderPrompt } from './src/components/PriorityOrderPrompt';
 import { VenueDecor } from './src/components/VenueDecor';
 import { SessionLoop } from './src/components/SessionLoop';
 import { RewardedAdModal } from './src/components/RewardedAdModal';
+import { ActiveBrewPanel } from './src/components/ActiveBrewPanel';
 
 const TABS = [
   { id: 'speed', label: 'UPGRADES', icon: '☕' },
@@ -67,6 +68,8 @@ export default function App() {
     claimPendingReward,
     acceptPriority,
     chaseThief,
+    beginActiveBrew,
+    tapBrewStage,
     useKettleBoost,
     buyUpgrade,
     hireStaff,
@@ -87,6 +90,8 @@ export default function App() {
   const nextVenue = venueProgress.next;
   const activeOrderCount = state.activeOrders.length;
   const helperCount = Math.max(0, stats.workerCount - 1);
+  const activeBrewTicket = state.activeBrew || state.activeBrewOffer;
+  const activeBrewItem = menuItems.find((item) => item.id === activeBrewTicket?.itemId);
 
   const tabCards = useMemo(() => {
     if (activeTab === 'speed' || activeTab === 'quality') {
@@ -231,6 +236,16 @@ export default function App() {
               </View>
             ) : null}
 
+            {!tutorialStep && !state.thiefEvent && !state.pendingReward ? (
+              <ActiveBrewPanel
+                offer={state.activeBrewOffer}
+                brew={state.activeBrew}
+                item={activeBrewItem}
+                onStart={beginActiveBrew}
+                onTap={tapBrewStage}
+              />
+            ) : null}
+
             {state.serviceStreak >= 3 ? (
               <View style={styles.streakChip}>
                 <Text style={styles.streakChipText}>🔥 {state.serviceStreak} STREAK</Text>
@@ -276,6 +291,13 @@ export default function App() {
             </View>
 
             {state.thiefEvent ? <ThiefSprite remaining={state.thiefEvent.remaining} /> : null}
+
+            {state.customerReaction ? (
+              <View style={styles.customerReaction} accessibilityLiveRegion="polite">
+                <Text style={styles.customerReactionEmoji}>{state.customerReaction.emoji}</Text>
+                <Text style={styles.customerReactionText}>{state.customerReaction.label}</Text>
+              </View>
+            ) : null}
 
             <View style={styles.queueRoad}>
               {queuePreview.length ? queuePreview.map((customer, index) => {
@@ -749,6 +771,9 @@ const styles = StyleSheet.create({
   thiefFace: { fontSize: 30 },
   thiefBag: { color: '#E8BF67', fontSize: 20, fontWeight: '900' },
   thiefSneak: { color: '#FFD868', fontSize: 7, fontWeight: '900', marginLeft: 2 },
+  customerReaction: { position: 'absolute', right: 8, bottom: 102, zIndex: 20, maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: C.green, paddingHorizontal: 6, paddingVertical: 4 },
+  customerReactionEmoji: { fontSize: 17 },
+  customerReactionText: { flexShrink: 1, color: '#3A210E', fontSize: 7, fontWeight: '900' },
   queueRoad: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 95, backgroundColor: C.road, borderTopWidth: 5, borderColor: '#B49A6E', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-evenly', paddingBottom: 5, paddingHorizontal: 4 },
   customerSlot: { width: '18%', alignItems: 'center', justifyContent: 'flex-end' },
   orderBubble: { minWidth: 28, height: 24, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: '#6F431C', alignItems: 'center', justifyContent: 'center', marginBottom: -2, zIndex: 3 },

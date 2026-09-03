@@ -32,6 +32,7 @@ export function GameFeedback({ state }) {
   const prevPriorityCompleted = useRef(state.priorityOrdersCompleted || 0);
   const prevPriorityMissed = useRef(state.priorityOrdersMissed || 0);
   const prevThiefOutcomeSequence = useRef(state.lastThiefOutcome?.sequence || 0);
+  const prevBrewOutcomeSequence = useRef(state.lastActiveBrewOutcome?.sequence || 0);
   const [feedback, setFeedback] = useState({ message: '', tone: 'good' });
   const animation = useRef(null);
 
@@ -68,8 +69,13 @@ export function GameFeedback({ state }) {
     const priorityCompleted = state.priorityOrdersCompleted || 0;
     const priorityMissed = state.priorityOrdersMissed || 0;
     const thiefOutcomeSequence = state.lastThiefOutcome?.sequence || 0;
+    const brewOutcomeSequence = state.lastActiveBrewOutcome?.sequence || 0;
 
-    if (thiefOutcomeSequence > prevThiefOutcomeSequence.current) {
+    if (brewOutcomeSequence > prevBrewOutcomeSequence.current) {
+      const outcome = state.lastActiveBrewOutcome;
+      const label = outcome.grade === 'perfect' ? 'PERFECT CHAI!' : outcome.grade === 'good' ? 'GOOD POUR!' : 'SLOPPY SAVE';
+      showMessage(`☕ ${label} · +${formatCoins(outcome.payout)} · +${outcome.heatBonus} HEAT`, outcome.grade === 'perfect' ? 'gold' : outcome.grade === 'sloppy' ? 'hot' : 'good');
+    } else if (thiefOutcomeSequence > prevThiefOutcomeSequence.current) {
       if (state.lastThiefOutcome.type === 'shooed') {
         const grade = state.lastThiefOutcome.grade === 'perfect' ? 'PERFECT CATCH' : state.lastThiefOutcome.grade === 'quick' ? 'QUICK SAVE' : 'CLOSE CALL';
         showMessage(`💨 ${grade} · +${state.lastThiefOutcome.heatBonus} HEAT`, 'gold');
@@ -115,6 +121,7 @@ export function GameFeedback({ state }) {
     prevPriorityCompleted.current = priorityCompleted;
     prevPriorityMissed.current = priorityMissed;
     prevThiefOutcomeSequence.current = thiefOutcomeSequence;
+    prevBrewOutcomeSequence.current = brewOutcomeSequence;
   }, [
     state.totalServed,
     state.lifetimeCoins,
@@ -128,6 +135,7 @@ export function GameFeedback({ state }) {
     state.priorityOrdersCompleted,
     state.priorityOrdersMissed,
     state.lastThiefOutcome,
+    state.lastActiveBrewOutcome,
     upgradeScore,
     rushTier.id,
     rushTier.label,

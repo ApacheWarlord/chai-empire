@@ -5,7 +5,7 @@ export const getLocalDayKey = (date = new Date()) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 9;
+export const SAVE_SCHEMA_VERSION = 10;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -80,6 +80,15 @@ export const createInitialState = () => ({
   perfectShoos: 0,
   thiefResolutionLedger: [],
   lastThiefOutcome: null,
+  activeBrewOffer: null,
+  activeBrew: null,
+  activeBrewCooldown: 18,
+  activeBrewSequence: 0,
+  activeBrewsCompleted: 0,
+  perfectBrews: 0,
+  activeBrewResolutionLedger: [],
+  lastActiveBrewOutcome: null,
+  customerReaction: null,
   serviceChoice: { sequence: 0, cooldown: 4, lastChoiceId: null },
   sessionRun: { run: 1, served: 0, target: 6, reward: 90, rewardId: null },
   rewardLedger: [],
@@ -277,6 +286,19 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
       ? [...new Set(saved.thiefResolutionLedger.filter((id) => typeof id === 'string'))].slice(-50)
       : base.thiefResolutionLedger,
     lastThiefOutcome: sanitizeThiefOutcome(saved.lastThiefOutcome),
+    activeBrewOffer: sanitizeActiveBrewOffer(saved.activeBrewOffer),
+    activeBrew: sanitizeActiveBrew(saved.activeBrew),
+    activeBrewCooldown: Math.min(120, Math.max(0, toFiniteNumber(saved.activeBrewCooldown, base.activeBrewCooldown))),
+    activeBrewSequence: clampInteger(saved.activeBrewSequence, base.activeBrewSequence, 0, 1000000),
+    activeBrewsCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.activeBrewsCompleted, base.activeBrewsCompleted))),
+    perfectBrews: Math.max(0, Math.floor(toFiniteNumber(saved.perfectBrews, base.perfectBrews))),
+    activeBrewResolutionLedger: Array.isArray(saved.activeBrewResolutionLedger)
+      ? [...new Set(saved.activeBrewResolutionLedger.filter((id) => typeof id === 'string'))].slice(-100)
+      : base.activeBrewResolutionLedger,
+    lastActiveBrewOutcome: saved.lastActiveBrewOutcome && typeof saved.lastActiveBrewOutcome === 'object' ? { ...saved.lastActiveBrewOutcome } : null,
+    customerReaction: saved.customerReaction && typeof saved.customerReaction === 'object'
+      ? { ...saved.customerReaction, remaining: Math.min(5, Math.max(0, toFiniteNumber(saved.customerReaction.remaining, 0))) }
+      : null,
     serviceChoice: sanitizeServiceChoice(saved.serviceChoice, base.serviceChoice),
     sessionRun: sanitizeSessionRun(saved.sessionRun, base.sessionRun),
     rewardLedger: Array.isArray(saved.rewardLedger)
@@ -346,9 +368,41 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   if (sanitized.thiefEvent) {
     sanitized.priorityOffer = null;
     sanitized.activeEvent = null;
+    sanitized.activeBrew = null;
+    sanitized.activeBrewOffer = null;
   }
+  if (sanitized.activeBrew || sanitized.activeBrewOffer) sanitized.priorityOffer = null;
+  if (sanitized.activeBrew && sanitized.activeBrewResolutionLedger.includes(sanitized.activeBrew.id)) sanitized.activeBrew = null;
+  if (sanitized.activeBrewOffer && !sanitized.activeOrders.some((order) => order.id === sanitized.activeBrewOffer.orderId)) sanitized.activeBrewOffer = null;
+  if (sanitized.activeBrew && !sanitized.activeOrders.some((order) => order.id === sanitized.activeBrew.orderId)) sanitized.activeBrew = null;
 
   return sanitized;
+};
+
+const sanitizeActiveBrewOffer = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string' || typeof value.orderId !== 'string') return null;
+  return {
+    id: value.id,
+    orderId: value.orderId,
+    itemId: validMenuIds.has(value.itemId) ? value.itemId : 'basic-chai',
+    remaining: Math.min(12, Math.max(0, toFiniteNumber(value.remaining, 0))),
+  };
+};
+
+const sanitizeActiveBrew = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string' || typeof value.orderId !== 'string') return null;
+  const stages = Array.isArray(value.stages) ? value.stages.filter((stage) => typeof stage === 'string').slice(0, 5) : [];
+  if (!stages.length) return null;
+  return {
+    id: value.id,
+    orderId: value.orderId,
+    itemId: validMenuIds.has(value.itemId) ? value.itemId : 'basic-chai',
+    stages,
+    stageIndex: clampInteger(value.stageIndex, 0, 0, stages.length - 1),
+    stageRemaining: Math.min(5, Math.max(0, toFiniteNumber(value.stageRemaining, 3.2))),
+    stageDuration: Math.min(5, Math.max(2, toFiniteNumber(value.stageDuration, 3.2))),
+    grades: Array.isArray(value.grades) ? value.grades.filter((grade) => ['perfect', 'good', 'sloppy'].includes(grade)).slice(0, stages.length) : [],
+  };
 };
 
 export const migrateSaveData = (payload) => {
