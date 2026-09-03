@@ -15,6 +15,11 @@ Working portrait mobile prototype on branch `codex/pixel-art-gameplay-v2`.
 - offline earnings and resilient save recovery
 - daily objectives and venue progression
 - compact mobile HUD and thumb-friendly upgrade cards
+- uncommon, seven-second biscuit thief encounters with a prominent `SHOO!` action
+- bounded biscuit-jar losses, duplicate-safe outcomes, and a small Heat reward for reacting in time
+- conflict guards for Priority Orders and major events, plus background-safe dismissal with no offline theft
+- skill-rated thief reactions (`PERFECT`, `QUICK`, and `CLOSE`) with 10/6/3 Heat rewards
+- persistent guard streak, best streak, and perfect-catch stats in Rush Control
 
 ## Validation
 GitHub Actions validates every prototype branch push by:
@@ -25,6 +30,12 @@ GitHub Actions validates every prototype branch push by:
 5. compiling a standalone release APK with Gradle
 
 Validated prototype lineage: `codex/pixel-art-gameplay-v2`.
+
+### Thief improvement cycle (`codex/gameplay-v3`)
+
+- 44/44 Node tests pass, including spawn timing, shoo success, bounded theft, duplicate resolution, save hydration, and offline/background safety.
+- Expo exports pass for Android, iOS, and web.
+- A standalone Android release APK compiles successfully with Gradle.
 
 ## Run locally
 ```bash

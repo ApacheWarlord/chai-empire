@@ -1,11 +1,11 @@
-import { menuItems, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
+import { menuItems, milestoneGoals, staffUnlocks, upgradeTracks, venueTiers } from '../data/gameData';
 
 export const getLocalDayKey = (date = new Date()) => {
   const pad = (value) => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
 
-export const SAVE_SCHEMA_VERSION = 3;
+export const SAVE_SCHEMA_VERSION = 10;
 
 const objectiveTemplates = [
   { id: 'serve-customers', label: 'Serve customers', metric: 'totalServed', targets: [20, 28, 36], rewards: [80, 110, 140] },
@@ -62,7 +62,39 @@ export const createInitialState = () => ({
   serviceStreak: 0,
   bestServiceStreak: 0,
   heatMeter: 0,
+  kettleBoostRemaining: 0,
+  kettleBoostCooldown: 0,
+  kettleBoostUses: 0,
+  priorityOffer: null,
+  priorityOfferCooldown: 22,
+  priorityOrdersAccepted: 0,
+  priorityOrdersCompleted: 0,
+  priorityOrdersMissed: 0,
+  thiefEvent: null,
+  thiefCooldown: 70,
+  thiefSequence: 0,
+  thievesShooed: 0,
+  thiefThefts: 0,
+  thiefStreak: 0,
+  bestThiefStreak: 0,
+  perfectShoos: 0,
+  thiefResolutionLedger: [],
+  lastThiefOutcome: null,
+  activeBrewOffer: null,
+  activeBrew: null,
+  activeBrewCooldown: 18,
+  activeBrewSequence: 0,
+  activeBrewsCompleted: 0,
+  perfectBrews: 0,
+  activeBrewResolutionLedger: [],
+  lastActiveBrewOutcome: null,
+  customerReaction: null,
+  serviceChoice: { sequence: 0, cooldown: 4, lastChoiceId: null },
+  sessionRun: { run: 1, served: 0, target: 6, reward: 90, rewardId: null },
+  rewardLedger: [],
+  pendingReward: null,
   venueUnlockedToast: null,
+  claimedMilestoneIds: [],
   dailyObjectives: {
     key: getLocalDayKey(),
     claimedIds: [],
@@ -81,6 +113,7 @@ const clampInteger = (value, fallback, min, max) =>
   Math.min(max, Math.max(min, Math.floor(toFiniteNumber(value, fallback))));
 
 const validMenuIds = new Set(menuItems.map((item) => item.id));
+const validMilestoneIds = new Set(milestoneGoals.map((goal) => goal.id));
 const validStaffCounts = new Set([1, ...staffUnlocks.map((staff) => staff.workerCount)]);
 const maxVenueTier = Math.max(...venueTiers.map((venue) => venue.id));
 
@@ -127,6 +160,82 @@ const sanitizeObjective = (objective) => {
 
 const sanitizeCustomerList = (value) => (Array.isArray(value) ? value.filter((entry) => entry && typeof entry === 'object') : []);
 
+const sanitizePriorityOffer = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const itemId = typeof value.itemId === 'string' && validMenuIds.has(value.itemId) ? value.itemId : null;
+  const remaining = Math.min(8, Math.max(0, toFiniteNumber(value.remaining, 0)));
+  if (!itemId || remaining <= 0) return null;
+  return {
+    id: typeof value.id === 'string' ? value.id : 'priority-offer',
+    itemId,
+    remaining,
+    customerTypeId: typeof value.customerTypeId === 'string' ? value.customerTypeId : 'regular',
+    customerEmoji: typeof value.customerEmoji === 'string' ? value.customerEmoji : '⚡',
+    customerName: typeof value.customerName === 'string' ? value.customerName : 'Priority Guest',
+    spendMultiplier: Math.min(4, Math.max(1, toFiniteNumber(value.spendMultiplier, 2.2))),
+  };
+};
+
+const sanitizeThiefEvent = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const remaining = Math.min(7, Math.max(0, toFiniteNumber(value.remaining, 0)));
+  if (remaining <= 0) return null;
+  return {
+    id: typeof value.id === 'string' ? value.id : 'thief-0',
+    remaining,
+    duration: 7,
+    stealAmount: clampInteger(value.stealAmount, 6, 0, 35),
+  };
+};
+
+const sanitizeThiefOutcome = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
+  if (!['shooed', 'stolen'].includes(value.type)) return null;
+  const grade = ['perfect', 'quick', 'close', 'stolen'].includes(value.grade) ? value.grade : value.type;
+  return {
+    id: value.id,
+    type: value.type,
+    amount: clampInteger(value.amount, 0, 0, 35),
+    grade,
+    heatBonus: grade === 'stolen' ? 0 : clampInteger(value.heatBonus, 0, 0, 10),
+    sequence: clampInteger(value.sequence, 0, 0, 1000000),
+  };
+};
+
+const sanitizeServiceChoice = (value, base) => {
+  const source = value && typeof value === 'object' ? value : {};
+  return {
+    sequence: clampInteger(source.sequence, base.sequence, 0, 1000000),
+    cooldown: Math.min(30, Math.max(0, toFiniteNumber(source.cooldown, base.cooldown))),
+    lastChoiceId: typeof source.lastChoiceId === 'string' ? source.lastChoiceId : null,
+  };
+};
+
+const sanitizeSessionRun = (value, base) => {
+  const source = value && typeof value === 'object' ? value : {};
+  const run = clampInteger(source.run, base.run, 1, 1000000);
+  const target = clampInteger(source.target, base.target, 3, 30);
+  const rewardId = typeof source.rewardId === 'string' ? source.rewardId : null;
+  return {
+    run,
+    served: clampInteger(source.served, base.served, 0, target),
+    target,
+    reward: clampInteger(source.reward, base.reward, 10, 10000),
+    rewardId,
+  };
+};
+
+const sanitizePendingReward = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string') return null;
+  if (!['session-run', 'daily-objective', 'milestone'].includes(value.source)) return null;
+  return {
+    id: value.id,
+    source: value.source,
+    label: typeof value.label === 'string' ? value.label : 'Stall reward',
+    amount: clampInteger(value.amount, 0, 1, 1000000),
+  };
+};
+
 const sanitizeDailyProgress = (value) => {
   const progress = value && typeof value === 'object' ? value : {};
   return {
@@ -157,6 +266,48 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
     serviceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.serviceStreak, base.serviceStreak))),
     bestServiceStreak: Math.max(0, Math.floor(toFiniteNumber(saved.bestServiceStreak, base.bestServiceStreak))),
     heatMeter: Math.min(100, Math.max(0, toFiniteNumber(saved.heatMeter, base.heatMeter))),
+    kettleBoostRemaining: Math.min(12, Math.max(0, toFiniteNumber(saved.kettleBoostRemaining, base.kettleBoostRemaining))),
+    kettleBoostCooldown: Math.min(28, Math.max(0, toFiniteNumber(saved.kettleBoostCooldown, base.kettleBoostCooldown))),
+    kettleBoostUses: Math.max(0, Math.floor(toFiniteNumber(saved.kettleBoostUses, base.kettleBoostUses))),
+    priorityOffer: sanitizePriorityOffer(saved.priorityOffer),
+    priorityOfferCooldown: Math.min(90, Math.max(0, toFiniteNumber(saved.priorityOfferCooldown, base.priorityOfferCooldown))),
+    priorityOrdersAccepted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersAccepted, base.priorityOrdersAccepted))),
+    priorityOrdersCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersCompleted, base.priorityOrdersCompleted))),
+    priorityOrdersMissed: Math.max(0, Math.floor(toFiniteNumber(saved.priorityOrdersMissed, base.priorityOrdersMissed))),
+    thiefEvent: sanitizeThiefEvent(saved.thiefEvent),
+    thiefCooldown: Math.min(180, Math.max(0, toFiniteNumber(saved.thiefCooldown, base.thiefCooldown))),
+    thiefSequence: clampInteger(saved.thiefSequence, base.thiefSequence, 0, 1000000),
+    thievesShooed: Math.max(0, Math.floor(toFiniteNumber(saved.thievesShooed, base.thievesShooed))),
+    thiefThefts: Math.max(0, Math.floor(toFiniteNumber(saved.thiefThefts, base.thiefThefts))),
+    thiefStreak: Math.max(0, Math.floor(toFiniteNumber(saved.thiefStreak, base.thiefStreak))),
+    bestThiefStreak: Math.max(0, Math.floor(toFiniteNumber(saved.bestThiefStreak, base.bestThiefStreak))),
+    perfectShoos: Math.max(0, Math.floor(toFiniteNumber(saved.perfectShoos, base.perfectShoos))),
+    thiefResolutionLedger: Array.isArray(saved.thiefResolutionLedger)
+      ? [...new Set(saved.thiefResolutionLedger.filter((id) => typeof id === 'string'))].slice(-50)
+      : base.thiefResolutionLedger,
+    lastThiefOutcome: sanitizeThiefOutcome(saved.lastThiefOutcome),
+    activeBrewOffer: sanitizeActiveBrewOffer(saved.activeBrewOffer),
+    activeBrew: sanitizeActiveBrew(saved.activeBrew),
+    activeBrewCooldown: Math.min(120, Math.max(0, toFiniteNumber(saved.activeBrewCooldown, base.activeBrewCooldown))),
+    activeBrewSequence: clampInteger(saved.activeBrewSequence, base.activeBrewSequence, 0, 1000000),
+    activeBrewsCompleted: Math.max(0, Math.floor(toFiniteNumber(saved.activeBrewsCompleted, base.activeBrewsCompleted))),
+    perfectBrews: Math.max(0, Math.floor(toFiniteNumber(saved.perfectBrews, base.perfectBrews))),
+    activeBrewResolutionLedger: Array.isArray(saved.activeBrewResolutionLedger)
+      ? [...new Set(saved.activeBrewResolutionLedger.filter((id) => typeof id === 'string'))].slice(-100)
+      : base.activeBrewResolutionLedger,
+    lastActiveBrewOutcome: saved.lastActiveBrewOutcome && typeof saved.lastActiveBrewOutcome === 'object' ? { ...saved.lastActiveBrewOutcome } : null,
+    customerReaction: saved.customerReaction && typeof saved.customerReaction === 'object'
+      ? { ...saved.customerReaction, remaining: Math.min(5, Math.max(0, toFiniteNumber(saved.customerReaction.remaining, 0))) }
+      : null,
+    serviceChoice: sanitizeServiceChoice(saved.serviceChoice, base.serviceChoice),
+    sessionRun: sanitizeSessionRun(saved.sessionRun, base.sessionRun),
+    rewardLedger: Array.isArray(saved.rewardLedger)
+      ? [...new Set(saved.rewardLedger.filter((id) => typeof id === 'string'))].slice(-200)
+      : base.rewardLedger,
+    pendingReward: sanitizePendingReward(saved.pendingReward),
+    claimedMilestoneIds: Array.isArray(saved.claimedMilestoneIds)
+      ? [...new Set(saved.claimedMilestoneIds.filter((id) => typeof id === 'string' && validMilestoneIds.has(id)))]
+      : base.claimedMilestoneIds,
     queue: sanitizeCustomerList(saved.queue),
     activeOrders: sanitizeCustomerList(saved.activeOrders),
     unlockedMenu: sanitizeUnlockedMenu(saved.unlockedMenu, base.unlockedMenu),
@@ -190,8 +341,68 @@ const sanitizeSavedState = (saved = {}, base = createInitialState()) => {
   sanitized.lifetimeCoins = Math.max(sanitized.lifetimeCoins, sanitized.coins);
   sanitized.premiumServed = Math.min(sanitized.premiumServed, sanitized.totalServed);
   sanitized.bestServiceStreak = Math.max(sanitized.bestServiceStreak, sanitized.serviceStreak);
+  sanitized.bestThiefStreak = Math.max(sanitized.bestThiefStreak, sanitized.thiefStreak);
+  if (sanitized.pendingReward && sanitized.rewardLedger.includes(sanitized.pendingReward.id)) {
+    sanitized.pendingReward = null;
+  }
+
+  const venue = venueTiers.find((entry) => entry.id === sanitized.venueTier) || venueTiers[0];
+  sanitized.staffOwned = sanitized.staffOwned.filter((workerCount) => workerCount <= venue.workerCap);
+  const menuAvailableAtVenue = sanitized.unlockedMenu.filter((itemId) => {
+    const item = menuItems.find((entry) => entry.id === itemId);
+    return item && item.venueMin <= sanitized.venueTier;
+  });
+  sanitized.unlockedMenu = [
+    'basic-chai',
+    ...menuAvailableAtVenue.filter((itemId) => itemId !== 'basic-chai'),
+  ].slice(0, venue.menuCap);
+  const allowedMenuIds = new Set(sanitized.unlockedMenu);
+  sanitized.queue = sanitized.queue.filter((customer) => allowedMenuIds.has(customer.itemId));
+  sanitized.activeOrders = sanitized.activeOrders.filter((order) => allowedMenuIds.has(order.itemId));
+  if (sanitized.priorityOffer && !allowedMenuIds.has(sanitized.priorityOffer.itemId)) {
+    sanitized.priorityOffer = null;
+  }
+  if (sanitized.thiefEvent && sanitized.thiefResolutionLedger.includes(sanitized.thiefEvent.id)) {
+    sanitized.thiefEvent = null;
+  }
+  if (sanitized.thiefEvent) {
+    sanitized.priorityOffer = null;
+    sanitized.activeEvent = null;
+    sanitized.activeBrew = null;
+    sanitized.activeBrewOffer = null;
+  }
+  if (sanitized.activeBrew || sanitized.activeBrewOffer) sanitized.priorityOffer = null;
+  if (sanitized.activeBrew && sanitized.activeBrewResolutionLedger.includes(sanitized.activeBrew.id)) sanitized.activeBrew = null;
+  if (sanitized.activeBrewOffer && !sanitized.activeOrders.some((order) => order.id === sanitized.activeBrewOffer.orderId)) sanitized.activeBrewOffer = null;
+  if (sanitized.activeBrew && !sanitized.activeOrders.some((order) => order.id === sanitized.activeBrew.orderId)) sanitized.activeBrew = null;
 
   return sanitized;
+};
+
+const sanitizeActiveBrewOffer = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string' || typeof value.orderId !== 'string') return null;
+  return {
+    id: value.id,
+    orderId: value.orderId,
+    itemId: validMenuIds.has(value.itemId) ? value.itemId : 'basic-chai',
+    remaining: Math.min(12, Math.max(0, toFiniteNumber(value.remaining, 0))),
+  };
+};
+
+const sanitizeActiveBrew = (value) => {
+  if (!value || typeof value !== 'object' || typeof value.id !== 'string' || typeof value.orderId !== 'string') return null;
+  const stages = Array.isArray(value.stages) ? value.stages.filter((stage) => typeof stage === 'string').slice(0, 5) : [];
+  if (!stages.length) return null;
+  return {
+    id: value.id,
+    orderId: value.orderId,
+    itemId: validMenuIds.has(value.itemId) ? value.itemId : 'basic-chai',
+    stages,
+    stageIndex: clampInteger(value.stageIndex, 0, 0, stages.length - 1),
+    stageRemaining: Math.min(5, Math.max(0, toFiniteNumber(value.stageRemaining, 3.2))),
+    stageDuration: Math.min(5, Math.max(2, toFiniteNumber(value.stageDuration, 3.2))),
+    grades: Array.isArray(value.grades) ? value.grades.filter((grade) => ['perfect', 'good', 'sloppy'].includes(grade)).slice(0, stages.length) : [],
+  };
 };
 
 export const migrateSaveData = (payload) => {

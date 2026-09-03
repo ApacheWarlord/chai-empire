@@ -9,6 +9,28 @@ const HEAT_DECAY_PER_SECOND = 1.4;
 const HEAT_GAIN_FAST_SERVICE = 18;
 const HEAT_GAIN_NORMAL_SERVICE = 10;
 const HEAT_LOSS_SLOW_SERVICE = 16;
+const KETTLE_BOOST_HEAT_COST = 40;
+const KETTLE_BOOST_DURATION_SECONDS = 12;
+const KETTLE_BOOST_COOLDOWN_SECONDS = 28;
+const KETTLE_BOOST_SPEED_MULTIPLIER = 1.45;
+const KETTLE_BOOST_PATIENCE_LOSS = 0.5;
+const PRIORITY_OFFER_DURATION_SECONDS = 8;
+const PRIORITY_OFFER_COOLDOWN_SECONDS = 42;
+const PRIORITY_ORDER_PAYOUT_MULTIPLIER = 2.2;
+const PRIORITY_ORDER_HEAT_BONUS = 12;
+const SERVICE_CHOICE_COOLDOWN_SECONDS = 12;
+const THIEF_DURATION_SECONDS = 7;
+const THIEF_COOLDOWN_SECONDS = 75;
+const THIEF_SPAWN_CHANCE = 0.04;
+const ACTIVE_BREW_OFFER_SECONDS = 9;
+const ACTIVE_BREW_COOLDOWN_SECONDS = 38;
+const ACTIVE_BREW_ITEMS = new Set(['basic-chai', 'masala-chai', 'ginger-chai', 'kulhad-chai']);
+
+export const SERVICE_CHOICES = [
+  { id: 'quick-pour', label: 'Quick Pour', icon: '⚡', blurb: 'Finish the oldest brew now · costs 18 Heat' },
+  { id: 'warm-welcome', label: 'Warm Welcome', icon: '☺', blurb: 'Restore 6 patience to the queue' },
+  { id: 'street-call', label: 'Street Call', icon: '◆', blurb: 'Invite one tipped customer · costs 5 coins' },
+];
 
 const getRushBonus = (heatMeter) => {
   if (heatMeter >= 85) {
@@ -115,6 +137,18 @@ const tutorialSteps = [
     condition: (state) => state.coins >= 150 && !state.staffOwned.includes(2),
   },
   {
+    id: 'kettle-boost',
+    title: 'Spend heat when the queue bites',
+    body: 'At 40 Heat, open Rush Control and fire Kettle Boost for a short service surge. Save it for real pressure.',
+    condition: (state) => (state.heatMeter || 0) >= KETTLE_BOOST_HEAT_COST && (state.kettleBoostUses || 0) === 0,
+  },
+  {
+    id: 'priority-orders',
+    title: 'Express tickets can jump the queue',
+    body: 'Priority Orders pay much more, but they take a real worker slot. Accept them when your queue can survive the detour.',
+    condition: (state) => Boolean(state.priorityOffer) && (state.priorityOrdersAccepted || 0) === 0,
+  },
+  {
     id: 'venue-goal',
     title: 'Aim for the next stall',
     body: 'Save up and build toward your first venue upgrade. That is the long game.',
@@ -194,8 +228,10 @@ export const getDerivedStats = (state) => {
   const venue = getVenue(state);
   const unlockedMenuEntries = getUnlockedMenuEntries(state);
   const workerCount = state.staffOwned.length;
+  const kettleBoostActive = (state.kettleBoostRemaining || 0) > 0;
+  const kettleBoostMultiplier = kettleBoostActive ? KETTLE_BOOST_SPEED_MULTIPLIER : 1;
   const prepMultiplier = 1 + state.levels.speed * 0.15;
-  const serviceMultiplier = 1 + state.levels.service * 0.1;
+  const serviceMultiplier = (1 + state.levels.service * 0.1) * kettleBoostMultiplier;
   const qualityMultiplier = 1 + state.levels.quality * 0.06;
   const reputationBonus = state.levels.reputation * 0.04;
   const menuVarietyBonus = Math.max(0, unlockedMenuEntries.length - 1) * 0.06;
@@ -230,6 +266,11 @@ export const getDerivedStats = (state) => {
     unlockedMenuEntries,
     customerMix: customerTypes,
     rushBonus,
+    kettleBoostActive,
+    kettleBoostMultiplier,
+    kettleBoostHeatCost: KETTLE_BOOST_HEAT_COST,
+    kettleBoostDuration: KETTLE_BOOST_DURATION_SECONDS,
+    kettleBoostCooldown: KETTLE_BOOST_COOLDOWN_SECONDS,
   };
 };
 
@@ -265,8 +306,103 @@ const pickItemForCustomerType = (entries, customerType) => {
   return randomWeightedItem(weightedEntries);
 };
 
+const createPriorityOffer = (state) => {
+  const entries = getUnlockedMenuEntries(state);
+  if (!entries.length) return state;
+  const customerType = randomWeightedCustomerTypeForState(state);
+  const item = pickItemForCustomerType(entries, customerType);
+  return {
+    ...state,
+    priorityOffer: {
+      id: `priority-${Date.now()}-${Math.random()}`,
+      itemId: item.id,
+      remaining: PRIORITY_OFFER_DURATION_SECONDS,
+      customerTypeId: customerType.id,
+      customerEmoji: customerType.emoji,
+      customerName: customerType.name,
+      spendMultiplier:
+        customerType.spendMultiplier *
+        (1 + (state.activeEvent?.payoutBoost || 0)) *
+        PRIORITY_ORDER_PAYOUT_MULTIPLIER,
+    },
+    priorityOfferCooldown: 0,
+  };
+};
+
+const tickPriorityOffer = (state) => {
+  if (state.priorityOffer) {
+    const remaining = state.priorityOffer.remaining - TICK_SECONDS;
+    if (remaining <= 0) {
+      return {
+        ...state,
+        priorityOffer: null,
+        priorityOfferCooldown: PRIORITY_OFFER_COOLDOWN_SECONDS,
+        priorityOrdersMissed: (state.priorityOrdersMissed || 0) + 1,
+      };
+    }
+    return { ...state, priorityOffer: { ...state.priorityOffer, remaining } };
+  }
+
+  const cooldown = Math.max(0, (state.priorityOfferCooldown || 0) - TICK_SECONDS);
+  if (cooldown > 0 || state.activeEvent || state.thiefEvent || state.activeBrew || state.activeBrewOffer || state.pendingReward) {
+    return { ...state, priorityOfferCooldown: cooldown };
+  }
+  return createPriorityOffer({ ...state, priorityOfferCooldown: 0 });
+};
+
+const getThiefStealAmount = (state) => Math.min(35, Math.max(0, Math.min(Math.floor(state.coins), Math.max(6, Math.round(state.coins * 0.08)))));
+
+const resolveThief = (state, type) => {
+  const thief = state.thiefEvent;
+  if (!thief || state.thiefResolutionLedger?.includes(thief.id)) return state;
+  const amount = type === 'stolen' ? Math.min(state.coins, thief.stealAmount) : 0;
+  const grade = type === 'stolen' ? 'stolen' : thief.remaining >= 5 ? 'perfect' : thief.remaining >= 3 ? 'quick' : 'close';
+  const heatBonus = grade === 'perfect' ? 10 : grade === 'quick' ? 6 : grade === 'close' ? 3 : 0;
+  const thiefStreak = type === 'shooed' ? (state.thiefStreak || 0) + 1 : 0;
+  const sequence = (state.lastThiefOutcome?.sequence || 0) + 1;
+  return {
+    ...state,
+    coins: Math.max(0, state.coins - amount),
+    heatMeter: Math.min(100, (state.heatMeter || 0) + heatBonus),
+    thiefEvent: null,
+    thiefCooldown: THIEF_COOLDOWN_SECONDS,
+    thievesShooed: (state.thievesShooed || 0) + (type === 'shooed' ? 1 : 0),
+    thiefThefts: (state.thiefThefts || 0) + (type === 'stolen' ? 1 : 0),
+    thiefStreak,
+    bestThiefStreak: Math.max(state.bestThiefStreak || 0, thiefStreak),
+    perfectShoos: (state.perfectShoos || 0) + (grade === 'perfect' ? 1 : 0),
+    thiefResolutionLedger: [...(state.thiefResolutionLedger || []), thief.id].slice(-50),
+    lastThiefOutcome: { id: thief.id, type, amount, grade, heatBonus, sequence },
+  };
+};
+
+const tickThief = (state) => {
+  if (state.thiefEvent) {
+    const remaining = state.thiefEvent.remaining - TICK_SECONDS;
+    if (remaining <= 0) return resolveThief(state, 'stolen');
+    return { ...state, thiefEvent: { ...state.thiefEvent, remaining } };
+  }
+  const cooldown = Math.max(0, (state.thiefCooldown || 0) - TICK_SECONDS);
+  if (cooldown > 0 || state.priorityOffer || state.activeEvent || state.activeBrew || state.activeBrewOffer || state.pendingReward || Math.random() > THIEF_SPAWN_CHANCE) {
+    return { ...state, thiefCooldown: cooldown };
+  }
+  const thiefSequence = (state.thiefSequence || 0) + 1;
+  return {
+    ...state,
+    thiefSequence,
+    thiefEvent: {
+      id: `thief-${thiefSequence}`,
+      remaining: THIEF_DURATION_SECONDS,
+      duration: THIEF_DURATION_SECONDS,
+      stealAmount: getThiefStealAmount(state),
+    },
+  };
+};
+
+export const shooThief = (state) => resolveThief(state, 'shooed');
+
 const maybeStartEvent = (state) => {
-  if (state.activeEvent || state.eventCooldown > 0 || Math.random() > 0.08) {
+  if (state.activeEvent || state.priorityOffer || state.thiefEvent || state.activeBrew || state.activeBrewOffer || state.pendingReward || state.eventCooldown > 0 || Math.random() > 0.08) {
     return state;
   }
   const event = gameEvents[Math.floor(Math.random() * gameEvents.length)];
@@ -284,11 +420,142 @@ const tickEvent = (state) => {
   return { ...state, activeEvent: { ...state.activeEvent, remaining } };
 };
 
+export const getActiveBrewStages = (itemId) => {
+  if (itemId === 'masala-chai') return ['BOIL', 'ADD MASALA', 'POUR', 'SERVE'];
+  if (itemId === 'ginger-chai') return ['BOIL', 'CRUSH GINGER', 'POUR', 'SERVE'];
+  if (itemId === 'kulhad-chai') return ['WARM KULHAD', 'BOIL', 'POUR', 'SERVE'];
+  return ['BOIL', 'ADD TEA', 'POUR', 'SERVE'];
+};
+
+export const canOfferActiveBrew = (state) => Boolean(
+  !state.activeBrew && !state.activeBrewOffer && !state.thiefEvent && !state.priorityOffer && !state.activeEvent &&
+  !state.pendingReward && !(state.activeBrewCooldown > 0) &&
+  state.activeOrders.some((order) => ACTIVE_BREW_ITEMS.has(order.itemId) && order.remaining > 1)
+);
+
+export const createActiveBrewOpportunity = (state) => {
+  if (!canOfferActiveBrew(state)) return state;
+  const order = state.activeOrders.find((entry) => ACTIVE_BREW_ITEMS.has(entry.itemId) && entry.remaining > 1);
+  const sequence = (state.activeBrewSequence || 0) + 1;
+  return {
+    ...state,
+    activeBrewSequence: sequence,
+    activeBrewOffer: { id: `brew-${sequence}`, orderId: order.id, itemId: order.itemId, remaining: ACTIVE_BREW_OFFER_SECONDS },
+  };
+};
+
+const getActiveBrewTiming = (state, stageLabel) => {
+  const speedLevel = state.levels?.speed || 0;
+  const serviceLevel = state.levels?.service || 0;
+  const duration = Math.max(2.4, 3.4 - speedLevel * 0.08);
+  const windowBoost = (stageLabel === 'POUR' ? serviceLevel : speedLevel) * 0.08;
+  return { duration, perfectMin: Math.max(0.7, 1.15 - windowBoost), perfectMax: Math.min(duration - 0.25, 2.25 + windowBoost) };
+};
+
+export const startActiveBrew = (state) => {
+  const offer = state.activeBrewOffer;
+  if (!offer || state.thiefEvent || state.pendingReward || state.activeBrew) return state;
+  const order = state.activeOrders.find((entry) => entry.id === offer.orderId);
+  if (!order || !ACTIVE_BREW_ITEMS.has(order.itemId)) return { ...state, activeBrewOffer: null };
+  const stages = getActiveBrewStages(order.itemId);
+  const timing = getActiveBrewTiming(state, stages[0]);
+  return { ...state, activeBrewOffer: null, activeBrew: { ...offer, stages, stageIndex: 0, stageRemaining: timing.duration, stageDuration: timing.duration, grades: [] } };
+};
+
+const resolveActiveBrew = (state, brew, grades) => {
+  if (!brew || state.activeBrewResolutionLedger?.includes(brew.id)) return { ...state, activeBrew: null };
+  const order = state.activeOrders.find((entry) => entry.id === brew.orderId);
+  if (!order) return { ...state, activeBrew: null, activeBrewCooldown: ACTIVE_BREW_COOLDOWN_SECONDS };
+  const item = menuItems.find((entry) => entry.id === order.itemId) || menuItems[0];
+  const stats = getDerivedStats(state);
+  const perfectCount = grades.filter((grade) => grade === 'perfect').length;
+  const sloppyCount = grades.filter((grade) => grade === 'sloppy').length;
+  const grade = perfectCount === grades.length ? 'perfect' : sloppyCount <= 1 ? 'good' : 'sloppy';
+  const basePayout = Math.round(item.price * stats.qualityMultiplier * (order.spendMultiplier || 1) * (1 + stats.rushBonus.payoutBoost));
+  const qualityBoost = (state.levels?.quality || 0) * 0.015;
+  const bonusRate = grade === 'perfect' ? Math.min(0.5, 0.32 + qualityBoost) : grade === 'good' ? 0.16 : 0.04;
+  const minimumBonus = grade === 'perfect' ? 4 : grade === 'good' ? 2 : 1;
+  const bonus = Math.min(20, Math.max(minimumBonus, Math.round(basePayout * bonusRate)));
+  const heatBonus = grade === 'perfect' ? 14 : grade === 'good' ? 8 : 3;
+  const satisfactionBonus = grade === 'perfect' ? 2 : grade === 'good' ? 1 : 0;
+  const streakGain = grade === 'sloppy' ? 0 : 1;
+  const payout = basePayout + bonus;
+  const serviceStreak = (state.serviceStreak || 0) + streakGain;
+  const sequence = (state.lastActiveBrewOutcome?.sequence || 0) + 1;
+  let next = {
+    ...state,
+    activeOrders: state.activeOrders.filter((entry) => entry.id !== order.id),
+    activeBrew: null,
+    activeBrewOffer: null,
+    activeBrewCooldown: ACTIVE_BREW_COOLDOWN_SECONDS,
+    activeBrewResolutionLedger: [...(state.activeBrewResolutionLedger || []), brew.id].slice(-100),
+    activeBrewsCompleted: (state.activeBrewsCompleted || 0) + 1,
+    perfectBrews: (state.perfectBrews || 0) + (grade === 'perfect' ? 1 : 0),
+    coins: state.coins + payout,
+    lifetimeCoins: state.lifetimeCoins + payout,
+    recentCoins: state.recentCoins + payout,
+    totalServed: state.totalServed + 1,
+    premiumServed: state.premiumServed + (item.price >= 20 ? 1 : 0),
+    satisfaction: clamp(state.satisfaction + satisfactionBonus, 0, 100),
+    heatMeter: clamp((state.heatMeter || 0) + heatBonus, 0, 100),
+    serviceStreak,
+    bestServiceStreak: Math.max(state.bestServiceStreak || 0, serviceStreak),
+    sessionRun: { ...state.sessionRun, served: Math.min(state.sessionRun.target, state.sessionRun.served + 1) },
+    lastActiveBrewOutcome: { id: brew.id, grade, payout, bonus, heatBonus, satisfactionBonus, sequence },
+    customerReaction: { orderId: order.id, emoji: grade === 'perfect' ? '😍' : grade === 'good' ? '😊' : '😐', label: grade === 'perfect' ? 'WAH! PERFECT CHAI!' : grade === 'good' ? 'GOOD POUR!' : 'CHAI IS CHAI…', remaining: 4 },
+  };
+  next = addDailyProgress(next, { totalServed: 1, businessRevenue: payout, premiumServed: item.price >= 20 ? 1 : 0 });
+  return next;
+};
+
+const advanceActiveBrew = (state, grade) => {
+  const brew = state.activeBrew;
+  if (!brew) return state;
+  const grades = [...brew.grades, grade];
+  const nextIndex = brew.stageIndex + 1;
+  if (nextIndex >= brew.stages.length) return resolveActiveBrew(state, brew, grades);
+  const timing = getActiveBrewTiming(state, brew.stages[nextIndex]);
+  return { ...state, activeBrew: { ...brew, grades, stageIndex: nextIndex, stageRemaining: timing.duration, stageDuration: timing.duration } };
+};
+
+export const tapActiveBrewStage = (state) => {
+  const brew = state.activeBrew;
+  if (!brew || state.activeBrewResolutionLedger?.includes(brew.id)) return state;
+  const timing = getActiveBrewTiming(state, brew.stages[brew.stageIndex]);
+  const grade = brew.stageRemaining >= timing.perfectMin && brew.stageRemaining <= timing.perfectMax
+    ? 'perfect'
+    : brew.stageRemaining > 0 ? 'good' : 'sloppy';
+  return advanceActiveBrew(state, grade);
+};
+
+export const cancelActiveBrew = (state) => ({ ...state, activeBrew: null, activeBrewOffer: null, activeBrewCooldown: ACTIVE_BREW_COOLDOWN_SECONDS });
+
+const tickActiveBrew = (state) => {
+  const reactionRemaining = Math.max(0, (state.customerReaction?.remaining || 0) - 1);
+  let next = {
+    ...state,
+    activeBrewCooldown: Math.max(0, (state.activeBrewCooldown || 0) - 1),
+    customerReaction: reactionRemaining > 0 ? { ...state.customerReaction, remaining: reactionRemaining } : null,
+  };
+  if ((next.thiefEvent || next.pendingReward) && (next.activeBrew || next.activeBrewOffer)) return cancelActiveBrew(next);
+  if (next.activeBrewOffer) {
+    if (!next.activeOrders.some((order) => order.id === next.activeBrewOffer.orderId)) return { ...next, activeBrewOffer: null, activeBrewCooldown: ACTIVE_BREW_COOLDOWN_SECONDS };
+    const remaining = next.activeBrewOffer.remaining - 1;
+    return remaining <= 0 ? { ...next, activeBrewOffer: null, activeBrewCooldown: ACTIVE_BREW_COOLDOWN_SECONDS } : { ...next, activeBrewOffer: { ...next.activeBrewOffer, remaining } };
+  }
+  if (next.activeBrew) {
+    const remaining = next.activeBrew.stageRemaining - 1;
+    next = { ...next, activeBrew: { ...next.activeBrew, stageRemaining: remaining } };
+    return remaining <= 0 ? advanceActiveBrew(next, 'sloppy') : next;
+  }
+  return canOfferActiveBrew(next) && Math.random() <= 0.16 ? createActiveBrewOpportunity(next) : next;
+};
+
 export const simulateTicks = (inputState, totalSeconds) => {
   let state = ensureDailyObjectives({ ...inputState, queue: [...inputState.queue], activeOrders: [...inputState.activeOrders] });
 
   for (let second = 0; second < totalSeconds; second += 1) {
-    state = tickEvent(maybeStartEvent(state));
+    state = tickActiveBrew(tickThief(tickPriorityOffer(tickEvent(maybeStartEvent(state)))));
     const stats = getDerivedStats(state);
     const entries = getUnlockedMenuEntries(state);
 
@@ -315,14 +582,15 @@ export const simulateTicks = (inputState, totalSeconds) => {
       spawnProgress -= 1;
     }
 
+    const patienceLoss = stats.kettleBoostActive ? KETTLE_BOOST_PATIENCE_LOSS : 1;
     const agedQueue = queue
-      .map((customer) => ({ ...customer, wait: customer.wait + 1, patience: customer.patience - 1 }))
+      .map((customer) => ({ ...customer, wait: customer.wait + 1, patience: customer.patience - patienceLoss }))
       .filter((customer) => customer.patience > 0);
 
     const freeWorkers = Math.max(0, stats.workerCount - state.activeOrders.length);
     const nextQueue = [...agedQueue];
     const activeOrders = state.activeOrders
-      .map((order) => ({ ...order, remaining: order.remaining - 1 }))
+      .map((order) => order.id === state.activeBrew?.orderId ? order : ({ ...order, remaining: order.remaining - stats.kettleBoostMultiplier }))
       .filter((order) => order.remaining > 0);
 
     for (let i = 0; i < freeWorkers && nextQueue.length > 0; i += 1) {
@@ -337,6 +605,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
         customerEmoji: customer.customerEmoji || '🙂',
         customerName: customer.customerName || 'Regular',
         spendMultiplier: customer.spendMultiplier || 1,
+        priorityOrder: Boolean(customer.priorityOrder),
       });
     }
 
@@ -344,6 +613,7 @@ export const simulateTicks = (inputState, totalSeconds) => {
     let satisfaction = state.satisfaction;
     let servedCount = 0;
     let premiumServed = 0;
+    let priorityServed = 0;
     let serviceStreak = state.serviceStreak || 0;
     let bestServiceStreak = state.bestServiceStreak || 0;
     let heatMeter = Math.max(0, (state.heatMeter || 0) - HEAT_DECAY_PER_SECOND);
@@ -364,13 +634,19 @@ export const simulateTicks = (inputState, totalSeconds) => {
         );
         serviceStreak = servedFast ? serviceStreak + 1 : 0;
         bestServiceStreak = Math.max(bestServiceStreak, serviceStreak);
+        const baseHeatDelta = servedFast
+          ? HEAT_GAIN_FAST_SERVICE
+          : order.waited <= 8
+            ? HEAT_GAIN_NORMAL_SERVICE
+            : -HEAT_LOSS_SLOW_SERVICE;
         heatMeter = clamp(
-          heatMeter + (servedFast ? HEAT_GAIN_FAST_SERVICE : order.waited <= 8 ? HEAT_GAIN_NORMAL_SERVICE : -HEAT_LOSS_SLOW_SERVICE),
+          heatMeter + baseHeatDelta + (order.priorityOrder ? PRIORITY_ORDER_HEAT_BONUS : 0),
           0,
           100
         );
         coinsGained += payout;
         servedCount += 1;
+        if (order.priorityOrder) priorityServed += 1;
         if (item.price >= 20) premiumServed += 1;
       } else {
         unfinishedOrders.push(order);
@@ -392,6 +668,17 @@ export const simulateTicks = (inputState, totalSeconds) => {
       serviceStreak,
       bestServiceStreak,
       heatMeter,
+      kettleBoostRemaining: Math.max(0, (state.kettleBoostRemaining || 0) - TICK_SECONDS),
+      kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - TICK_SECONDS),
+      priorityOrdersCompleted: (state.priorityOrdersCompleted || 0) + priorityServed,
+      serviceChoice: {
+        ...state.serviceChoice,
+        cooldown: Math.max(0, (state.serviceChoice?.cooldown || 0) - TICK_SECONDS),
+      },
+      sessionRun: {
+        ...state.sessionRun,
+        served: Math.min(state.sessionRun.target, state.sessionRun.served + servedCount),
+      },
     };
     state = addDailyProgress(state, {
       totalServed: servedCount,
@@ -401,6 +688,53 @@ export const simulateTicks = (inputState, totalSeconds) => {
   }
 
   return state;
+};
+
+export const acceptPriorityOrder = (state) => {
+  const offer = state.priorityOffer;
+  if (!offer || offer.remaining <= 0 || !state.unlockedMenu.includes(offer.itemId)) return state;
+
+  const customerType = getCustomerTypeById(offer.customerTypeId);
+  const maxPatience = Math.max(16, customerType.patience);
+  const priorityCustomer = {
+    id: `accepted-${offer.id}`,
+    itemId: offer.itemId,
+    wait: 0,
+    patience: maxPatience,
+    maxPatience,
+    customerTypeId: offer.customerTypeId,
+    customerEmoji: offer.customerEmoji,
+    customerName: offer.customerName,
+    spendMultiplier: offer.spendMultiplier,
+    priorityOrder: true,
+  };
+
+  return {
+    ...state,
+    priorityOffer: null,
+    priorityOfferCooldown: PRIORITY_OFFER_COOLDOWN_SECONDS,
+    priorityOrdersAccepted: (state.priorityOrdersAccepted || 0) + 1,
+    queue: [priorityCustomer, ...state.queue],
+  };
+};
+
+export const activateKettleBoost = (state) => {
+  const heat = state.heatMeter || 0;
+  if (
+    heat < KETTLE_BOOST_HEAT_COST ||
+    (state.kettleBoostRemaining || 0) > 0 ||
+    (state.kettleBoostCooldown || 0) > 0
+  ) {
+    return state;
+  }
+
+  return {
+    ...state,
+    heatMeter: Math.max(0, heat - KETTLE_BOOST_HEAT_COST),
+    kettleBoostRemaining: KETTLE_BOOST_DURATION_SECONDS,
+    kettleBoostCooldown: KETTLE_BOOST_COOLDOWN_SECONDS,
+    kettleBoostUses: (state.kettleBoostUses || 0) + 1,
+  };
 };
 
 export const getBottleneck = (state) => {
@@ -451,10 +785,25 @@ export const getMilestones = (state) =>
     return {
       ...goal,
       current: value,
+      claimed: (state.claimedMilestoneIds || []).includes(goal.id),
       complete: value >= goal.target,
       progress: clamp(value / goal.target, 0, 1),
     };
   });
+
+export const claimMilestoneReward = (state, milestoneId) => {
+  const goal = milestoneGoals.find((entry) => entry.id === milestoneId);
+  if (!goal) return state;
+  const claimedIds = state.claimedMilestoneIds || [];
+  const value = state[goal.metric] || 0;
+  if (value < goal.target || claimedIds.includes(goal.id)) return state;
+
+  return {
+    ...state,
+    coins: state.coins + goal.reward,
+    claimedMilestoneIds: [...claimedIds, goal.id],
+  };
+};
 
 export const getTutorialStep = (state) => {
   if (!state.tutorial?.active) return null;
@@ -583,21 +932,140 @@ export const dismissTutorialStep = (state, stepId) => {
 
 export const claimOfflineProgress = (state, elapsedMs) => {
   state = ensureDailyObjectives(state);
+  const elapsedSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
   const elapsedMinutes = Math.min(OFFLINE_CAP_MINUTES, Math.floor(elapsedMs / 60000));
-  if (elapsedMinutes <= 0) return { state, offlineCoins: 0 };
+  const timedState = {
+    ...state,
+    activeBrew: null,
+    activeBrewOffer: null,
+    activeBrewCooldown: state.activeBrew || state.activeBrewOffer
+      ? ACTIVE_BREW_COOLDOWN_SECONDS
+      : Math.max(0, (state.activeBrewCooldown || 0) - elapsedSeconds),
+    customerReaction: null,
+    kettleBoostRemaining: 0,
+    kettleBoostCooldown: Math.max(0, (state.kettleBoostCooldown || 0) - elapsedSeconds),
+    priorityOffer: null,
+    priorityOfferCooldown: state.priorityOffer
+      ? PRIORITY_OFFER_COOLDOWN_SECONDS
+      : Math.max(0, (state.priorityOfferCooldown || 0) - elapsedSeconds),
+    thiefEvent: null,
+    thiefCooldown: state.thiefEvent
+      ? THIEF_COOLDOWN_SECONDS
+      : Math.max(0, (state.thiefCooldown || 0) - elapsedSeconds),
+  };
 
-  const recentSamples = state.cpmWindow.filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+  if (elapsedMinutes <= 0) return { state: timedState, offlineCoins: 0 };
+
+  const recentSamples = timedState.cpmWindow.filter((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
   const averageCpm = recentSamples.length
     ? (recentSamples.reduce((sum, value) => sum + value, 0) * 60) / recentSamples.length
-    : getDerivedStats(state).coinsPerMinute;
+    : getDerivedStats(timedState).coinsPerMinute;
   const offlineCoins = Math.round(averageCpm * elapsedMinutes * OFFLINE_EFFICIENCY);
 
   return {
     offlineCoins,
     state: {
-      ...state,
-      coins: state.coins + offlineCoins,
-      lifetimeCoins: state.lifetimeCoins + offlineCoins,
+      ...timedState,
+      coins: timedState.coins + offlineCoins,
+      lifetimeCoins: timedState.lifetimeCoins + offlineCoins,
     },
+  };
+};
+
+export const getServiceChoices = (state) => {
+  const ready = (state.serviceChoice?.cooldown || 0) <= 0;
+  return SERVICE_CHOICES.map((choice) => ({
+    ...choice,
+    ready,
+    disabledReason: !ready
+      ? `NEXT CHOICE IN ${Math.ceil(state.serviceChoice.cooldown)}s`
+      : choice.id === 'quick-pour' && ((state.heatMeter || 0) < 18 || !state.activeOrders.length)
+        ? 'NEED 18 HEAT + A BREW'
+        : choice.id === 'warm-welcome' && !state.queue.length
+          ? 'QUEUE IS HAPPY'
+        : choice.id === 'street-call' && state.coins < 5
+            ? 'NEED 5 COINS'
+            : choice.id === 'street-call' && state.queue.length >= getDerivedStats(state).queueCapacity
+              ? 'QUEUE IS FULL'
+            : null,
+  }));
+};
+
+export const chooseServiceAction = (state, choiceId) => {
+  if (state.activeBrew || state.activeBrewOffer) return state;
+  const choice = getServiceChoices(state).find((entry) => entry.id === choiceId);
+  if (!choice || !choice.ready || choice.disabledReason) return state;
+
+  let next = { ...state };
+  if (choiceId === 'quick-pour') {
+    const activeOrders = state.activeOrders.map((order, index) => index === 0 ? { ...order, remaining: 1.5 } : order);
+    next = { ...next, activeOrders, heatMeter: Math.max(0, state.heatMeter - 18) };
+  } else if (choiceId === 'warm-welcome') {
+    next = {
+      ...next,
+      queue: state.queue.map((customer) => ({
+        ...customer,
+        patience: Math.min(customer.maxPatience || customer.patience + 6, customer.patience + 6),
+      })),
+      satisfaction: Math.min(100, state.satisfaction + 1),
+    };
+  } else if (choiceId === 'street-call') {
+    const item = getUnlockedMenuEntries(state)[state.serviceChoice.sequence % getUnlockedMenuEntries(state).length];
+    const maxPatience = 24;
+    next = {
+      ...next,
+      coins: state.coins - 5,
+      queue: [...state.queue, {
+        id: `street-${state.sessionRun.run}-${state.serviceChoice.sequence}`,
+        itemId: item.id,
+        wait: 0,
+        patience: maxPatience,
+        maxPatience,
+        customerTypeId: 'regular',
+        customerEmoji: '☕',
+        customerName: 'Street Guest',
+        spendMultiplier: 1.6,
+      }],
+    };
+  }
+
+  return {
+    ...next,
+    serviceChoice: {
+      sequence: state.serviceChoice.sequence + 1,
+      cooldown: SERVICE_CHOICE_COOLDOWN_SECONDS,
+      lastChoiceId: choiceId,
+    },
+  };
+};
+
+export const prepareSessionReward = (state) => {
+  if (state.pendingReward || state.activeBrew || state.activeBrewOffer || state.sessionRun.served < state.sessionRun.target) return state;
+  const rewardId = state.sessionRun.rewardId || `session-${state.sessionRun.run}`;
+  if (state.rewardLedger.includes(rewardId)) return state;
+  return {
+    ...state,
+    pendingReward: { id: rewardId, source: 'session-run', label: `Tea Run ${state.sessionRun.run}`, amount: state.sessionRun.reward },
+    sessionRun: { ...state.sessionRun, rewardId },
+  };
+};
+
+export const resolvePendingReward = (state, rewardId, multiplier = 1) => {
+  const reward = state.pendingReward;
+  if (!reward || reward.id !== rewardId || state.rewardLedger.includes(rewardId)) return state;
+  const safeMultiplier = multiplier === 2 ? 2 : 1;
+  const nextRun = state.sessionRun.run + 1;
+  return {
+    ...state,
+    coins: state.coins + reward.amount * safeMultiplier,
+    rewardLedger: [...state.rewardLedger, rewardId].slice(-200),
+    pendingReward: null,
+    sessionRun: reward.source === 'session-run' ? {
+      run: nextRun,
+      served: 0,
+      target: Math.min(12, 6 + Math.floor(nextRun / 2)),
+      reward: Math.min(260, 90 + (nextRun - 1) * 15),
+      rewardId: null,
+    } : state.sessionRun,
   };
 };

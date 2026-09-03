@@ -17,6 +17,13 @@ import { useGameState } from './src/hooks/useGameState';
 import { getTrackCost } from './src/game/simulation';
 import { formatCoins, formatPercent } from './src/utils/formatters';
 import { pixelSprites } from './src/data/pixelSprites';
+import { GameDrawer } from './src/components/GameDrawer';
+import { GameFeedback } from './src/components/GameFeedback';
+import { PriorityOrderPrompt } from './src/components/PriorityOrderPrompt';
+import { VenueDecor } from './src/components/VenueDecor';
+import { SessionLoop } from './src/components/SessionLoop';
+import { RewardedAdModal } from './src/components/RewardedAdModal';
+import { ActiveBrewPanel } from './src/components/ActiveBrewPanel';
 
 const TABS = [
   { id: 'speed', label: 'UPGRADES', icon: '☕' },
@@ -35,28 +42,43 @@ const customerSprites = {
 
 const getShortfall = (coins, cost) => Math.max(0, cost - coins);
 const USE_NATIVE_DRIVER = Platform.OS !== 'web';
+const roadsideDecorArt = require('./assets/artwork/roadside-decor.png');
+const perfectChaiBurstArt = require('./assets/artwork/perfect-chai-burst.png');
+const getThiefReactionCopy = (remaining) => remaining >= 5 ? 'PERFECT +10 HEAT' : remaining >= 3 ? 'QUICK +6 HEAT' : 'CLOSE CALL +3 HEAT';
 
 export default function App() {
   const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState('speed');
+  const [activePanel, setActivePanel] = useState(null);
   const {
     isLoaded,
     state,
     stats,
     venueProgress,
     recommendation,
+    milestones,
     dailyObjectives,
     tutorialStep,
     bottleneck,
+    serviceChoices,
     offlineCoins,
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    chooseService,
+    openSessionReward,
+    claimPendingReward,
+    acceptPriority,
+    chaseThief,
+    beginActiveBrew,
+    tapBrewStage,
+    useKettleBoost,
     buyUpgrade,
     hireStaff,
     buyMenuUnlock,
     buyVenue,
     claimObjective,
+    claimMilestone,
     dismissTutorial,
     resetGame,
     upgradeTracks,
@@ -70,6 +92,8 @@ export default function App() {
   const nextVenue = venueProgress.next;
   const activeOrderCount = state.activeOrders.length;
   const helperCount = Math.max(0, stats.workerCount - 1);
+  const activeBrewTicket = state.activeBrew || state.activeBrewOffer;
+  const activeBrewItem = menuItems.find((item) => item.id === activeBrewTicket?.itemId);
 
   const tabCards = useMemo(() => {
     if (activeTab === 'speed' || activeTab === 'quality') {
@@ -152,7 +176,15 @@ export default function App() {
           </View>
         ) : null}
 
-        <View style={styles.sceneFrame}>
+        <SessionLoop
+          run={state.sessionRun}
+          choices={serviceChoices}
+          onChoose={chooseService}
+          onClaim={openSessionReward}
+        />
+
+        <View style={[styles.sceneFrame, state.kettleBoostRemaining > 0 && styles.sceneFrameBoost]}>
+          <GameFeedback state={state} />
           <View style={styles.bigSignOuter}>
             <View style={styles.bigSignInner}>
               <Text style={[styles.gameTitle, compact && styles.gameTitleCompact]}>CHAI EMPIRE</Text>
@@ -161,6 +193,7 @@ export default function App() {
           </View>
 
           <View style={styles.sceneSky}>
+            <VenueDecor tier={state.venueTier} />
             <View style={styles.sunPixel} />
             <View style={[styles.cloudPixel, { left: '10%', top: 20 }]} />
             <View style={[styles.cloudPixel, { right: '8%', top: 42, width: 46 }]} />
@@ -179,6 +212,48 @@ export default function App() {
               </View>
             ) : null}
 
+            <PriorityOrderPrompt
+              offer={state.priorityOffer}
+              menuItems={menuItems}
+              queuePressure={queuePressure}
+              topOffset={state.activeEvent ? 34 : 6}
+              onAccept={acceptPriority}
+            />
+
+            {state.thiefEvent ? (
+              <View style={styles.thiefAlert} accessibilityLiveRegion="assertive">
+                <View style={styles.thiefCopy}>
+                  <Text style={styles.thiefTitle}>⚠ BISCUIT THIEF!</Text>
+                  <Text style={styles.thiefSub}>PROTECT {formatCoins(state.thiefEvent.stealAmount)} · {Math.ceil(state.thiefEvent.remaining)}s · {getThiefReactionCopy(state.thiefEvent.remaining)}</Text>
+                  <PixelBar progress={state.thiefEvent.remaining / state.thiefEvent.duration} danger />
+                </View>
+                <TouchableOpacity
+                  style={styles.shooButton}
+                  onPress={chaseThief}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Shoo biscuit thief, ${Math.ceil(state.thiefEvent.remaining)} seconds remaining`}
+                >
+                  <Text style={styles.shooButtonText}>SHOO!</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
+            {!tutorialStep && !state.thiefEvent && !state.pendingReward ? (
+              <ActiveBrewPanel
+                offer={state.activeBrewOffer}
+                brew={state.activeBrew}
+                item={activeBrewItem}
+                onStart={beginActiveBrew}
+                onTap={tapBrewStage}
+              />
+            ) : null}
+
+            {state.serviceStreak >= 3 ? (
+              <View style={styles.streakChip}>
+                <Text style={styles.streakChipText}>🔥 {state.serviceStreak} STREAK</Text>
+              </View>
+            ) : null}
+
             <View style={styles.stallRoof}>
               {Array.from({ length: 9 }).map((_, i) => <View key={i} style={styles.roofStripe} />)}
             </View>
@@ -193,7 +268,7 @@ export default function App() {
                 </View>
                 <View style={styles.workerRow}>
                   <Sprite source={pixelSprites.owner} size={compact ? 52 : 60} animated />
-                  <View style={styles.kettleStation}>
+                  <View style={[styles.kettleStation, state.kettleBoostRemaining > 0 && styles.kettleStationBoost]}>
                     <Text style={styles.steam}>≈</Text>
                     <Text style={styles.kettleEmoji}>♨</Text>
                     <Text style={styles.chaiTray}>▥▥▥</Text>
@@ -217,14 +292,26 @@ export default function App() {
               </View>
             </View>
 
+            <Image source={roadsideDecorArt} style={styles.roadsideDecorArt} resizeMode="contain" accessibilityIgnoresInvertColors />
+
+            {state.thiefEvent ? <ThiefSprite remaining={state.thiefEvent.remaining} /> : null}
+
+            {state.customerReaction ? (
+              <View style={styles.customerReaction} accessibilityLiveRegion="polite">
+                <Text style={styles.customerReactionEmoji}>{state.customerReaction.emoji}</Text>
+                <Text style={styles.customerReactionText}>{state.customerReaction.label}</Text>
+              </View>
+            ) : null}
+            {state.customerReaction ? <BrewArtBurst key={state.customerReaction.orderId} /> : null}
+
             <View style={styles.queueRoad}>
               {queuePreview.length ? queuePreview.map((customer, index) => {
                 const item = menuItems.find((entry) => entry.id === customer.itemId);
                 const patienceRatio = Math.max(0, Math.min(1, customer.patience / Math.max(1, customer.maxPatience || customer.patience || 1)));
                 return (
                   <View key={customer.id} style={styles.customerSlot}>
-                    <View style={styles.orderBubble}>
-                      <Text style={styles.orderBubbleText}>{item?.orderBubble || '☕'}</Text>
+                    <View style={[styles.orderBubble, customer.priorityOrder && styles.orderBubblePriority]}>
+                      <Text style={styles.orderBubbleText}>{customer.priorityOrder ? `⚡ ${item?.orderBubble || '☕'}` : item?.orderBubble || '☕'}</Text>
                     </View>
                     <Sprite source={customerSprites[customer.customerTypeId] || pixelSprites.officeWorker} size={compact ? 42 : 48} animated delay={index * 90} />
                     <View style={styles.patienceTrack}>
@@ -321,25 +408,54 @@ export default function App() {
           ))}
         </View>
 
+        <GameDrawer
+          panel={activePanel}
+          onClose={() => setActivePanel(null)}
+          dailyObjectives={dailyObjectives}
+          milestones={milestones}
+          state={state}
+          stats={stats}
+          venueProgress={venueProgress}
+          onClaimObjective={claimObjective}
+          onClaimMilestone={claimMilestone}
+          onUseKettleBoost={useKettleBoost}
+          onReset={confirmReset}
+        />
+
         <View style={styles.bottomNav}>
-          <BottomNav icon="☷" label={`${dailyObjectives.filter((item) => !item.claimed).length} MISSIONS`} />
-          <BottomNav icon="★" label={`${state.serviceStreak} STREAK`} />
-          <View style={styles.centerBadge}>
+          <BottomNav
+            icon="☷"
+            label={`${dailyObjectives.filter((item) => !item.claimed).length} MISSIONS`}
+            onPress={() => setActivePanel(activePanel === 'missions' ? null : 'missions')}
+            active={activePanel === 'missions'}
+          />
+          <BottomNav
+            icon="★"
+            label={milestones.some((item) => item.complete && !item.claimed)
+              ? `${milestones.filter((item) => item.complete && !item.claimed).length} REWARD READY`
+              : `${milestones.filter((item) => item.claimed).length}/${milestones.length} GOALS`}
+            onPress={() => setActivePanel(activePanel === 'milestones' ? null : 'milestones')}
+            active={activePanel === 'milestones'}
+          />
+          <View style={[styles.centerBadge, state.kettleBoostRemaining > 0 && styles.centerBadgeBoost]}>
             <Text style={styles.centerBadgeCup}>☕</Text>
-            <Text style={styles.centerBadgeText}>AUTO SERVING</Text>
+            <Text style={styles.centerBadgeText}>{state.kettleBoostRemaining > 0 ? `BOOST ${Math.ceil(state.kettleBoostRemaining)}s` : 'AUTO SERVING'}</Text>
           </View>
-          <BottomNav icon="⚡" label={`${Math.round(state.heatMeter || 0)}% RUSH`} />
-          <TouchableOpacity
-            style={styles.bottomNavItem}
-            onPress={confirmReset}
-            accessibilityRole="button"
-            accessibilityLabel="Reset game data"
-          >
-            <Text style={styles.bottomNavIcon}>↺</Text>
-            <Text style={styles.bottomNavLabel}>RESET</Text>
-          </TouchableOpacity>
+          <BottomNav
+            icon="⚡"
+            label={`${Math.round(state.heatMeter || 0)}% RUSH`}
+            onPress={() => setActivePanel(activePanel === 'rush' ? null : 'rush')}
+            active={activePanel === 'rush'}
+          />
+          <BottomNav
+            icon="⚙"
+            label="SETTINGS"
+            onPress={() => setActivePanel(activePanel === 'settings' ? null : 'settings')}
+            active={activePanel === 'settings'}
+          />
         </View>
       </ScrollView>
+      <RewardedAdModal reward={state.pendingReward} onResolve={claimPendingReward} />
     </SafeAreaView>
   );
 }
@@ -372,6 +488,56 @@ function Sprite({ source, size, animated = false, delay = 0 }) {
       resizeMode="contain"
     />
   );
+}
+
+function ThiefSprite({ remaining }) {
+  const sneak = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sneak, { toValue: 1, duration: remaining <= 3 ? 90 : 180, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(sneak, { toValue: 0, duration: remaining <= 3 ? 90 : 180, useNativeDriver: USE_NATIVE_DRIVER }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [remaining <= 3, sneak]);
+
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.thiefSprite,
+        remaining <= 3 && styles.thiefSpriteCritical,
+        { transform: [{ translateX: sneak.interpolate({ inputRange: [0, 1], outputRange: [-5, 3] }) }, { rotate: '-3deg' }] },
+      ]}
+    >
+      <Text style={styles.thiefBag}>▧</Text>
+      <Text style={styles.thiefFace}>🥷</Text>
+      <Text style={styles.thiefSneak}>{remaining <= 3 ? 'GRAB!' : 'SNEAK!'}</Text>
+    </Animated.View>
+  );
+}
+
+function BrewArtBurst() {
+  const scale = useRef(new Animated.Value(0.55)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.sequence([
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: USE_NATIVE_DRIVER }),
+        Animated.timing(opacity, { toValue: 1, duration: 130, useNativeDriver: USE_NATIVE_DRIVER }),
+      ]),
+      Animated.delay(900),
+      Animated.timing(opacity, { toValue: 0, duration: 320, useNativeDriver: USE_NATIVE_DRIVER }),
+    ]);
+    animation.start();
+    return () => animation.stop();
+  }, [opacity, scale]);
+
+  return <Animated.Image pointerEvents="none" source={perfectChaiBurstArt} style={[styles.brewArtBurst, { opacity, transform: [{ scale }] }]} resizeMode="contain" />;
 }
 
 function HudPanel({ label, value, sub, icon, flex }) {
@@ -513,12 +679,18 @@ function Requirement({ label, current, target, format }) {
   );
 }
 
-function BottomNav({ icon, label }) {
+function BottomNav({ icon, label, onPress, active = false }) {
   return (
-    <View style={styles.bottomNavItem}>
+    <TouchableOpacity
+      style={[styles.bottomNavItem, active && styles.bottomNavItemActive]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={label}
+    >
       <Text style={styles.bottomNavIcon}>{icon}</Text>
       <Text style={styles.bottomNavLabel}>{label}</Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -582,6 +754,7 @@ const styles = StyleSheet.create({
   smallButtonText: { color: '#FFF7DD', fontSize: 9, fontWeight: '900' },
 
   sceneFrame: { borderWidth: 4, borderColor: C.wood2, backgroundColor: C.dark, ...pixelShadow },
+  sceneFrameBoost: { borderColor: C.gold, shadowOpacity: 0.95, elevation: 10 },
   bigSignOuter: { backgroundColor: '#3C200F', padding: 5, borderBottomWidth: 3, borderColor: '#1A0D05' },
   bigSignInner: { backgroundColor: C.wood, borderWidth: 3, borderColor: '#BB7126', paddingVertical: 5, alignItems: 'center' },
   gameTitle: { color: C.gold, fontSize: 26, fontWeight: '900', letterSpacing: 2 },
@@ -594,6 +767,12 @@ const styles = StyleSheet.create({
   cityBlock: { flex: 1, height: 22, backgroundColor: '#8B735C', borderTopWidth: 3, borderColor: '#66523E' },
   eventRibbon: { position: 'absolute', top: 4, left: 8, right: 78, backgroundColor: C.orange, borderWidth: 2, borderColor: '#7D2C0B', padding: 4, zIndex: 10 },
   eventText: { color: '#FFF0BF', fontSize: 9, fontWeight: '900' },
+  thiefAlert: { position: 'absolute', top: 4, left: 7, right: 7, minHeight: 58, zIndex: 30, flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#751F18', borderWidth: 3, borderColor: '#FFCD43', padding: 6, ...pixelShadow },
+  thiefCopy: { flex: 1, gap: 3 },
+  thiefTitle: { color: '#FFF3C8', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  thiefSub: { color: '#FFD76A', fontSize: 8, fontWeight: '900' },
+  shooButton: { minWidth: 82, minHeight: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: '#E96B1B', borderWidth: 3, borderColor: '#6E210B' },
+  shooButtonText: { color: '#FFF8DA', fontSize: 17, fontWeight: '900', letterSpacing: 1 },
   stallRoof: { position: 'absolute', top: 104, left: '6%', right: '6%', height: 28, backgroundColor: '#56514B', borderWidth: 3, borderColor: '#2A2723', flexDirection: 'row', overflow: 'hidden' },
   roofStripe: { flex: 1, borderRightWidth: 2, borderColor: '#302E2A', backgroundColor: '#78716A' },
   stallBody: { position: 'absolute', top: 126, left: '8%', right: '8%', height: 164, backgroundColor: '#2B251F', borderWidth: 4, borderColor: C.wood },
@@ -605,21 +784,35 @@ const styles = StyleSheet.create({
   workerRow: { flex: 1, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-around' },
   helperCluster: { minWidth: 76, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', marginLeft: -8 },
   kettleStation: { alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 10 },
+  kettleStationBoost: { backgroundColor: '#5E2B12', borderWidth: 2, borderColor: C.orange, paddingHorizontal: 8, paddingTop: 3 },
   steam: { color: '#F0ECE0', fontSize: 30, lineHeight: 25, fontWeight: '900' },
   kettleEmoji: { color: '#C7C2B8', fontSize: 30 },
   chaiTray: { color: C.gold, fontWeight: '900', marginTop: -4 },
   brewingLabel: { color: '#F4D98F', fontSize: 7, fontWeight: '900', marginTop: 2 },
   counterFront: { height: 42, backgroundColor: '#8A4B20', borderTopWidth: 4, borderColor: '#3B1C0A', alignItems: 'center', justifyContent: 'center' },
   counterText: { color: '#F4D98F', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  thiefSprite: { position: 'absolute', right: '8%', top: 224, zIndex: 16, alignItems: 'center', flexDirection: 'row', backgroundColor: '#2B182D', borderWidth: 2, borderColor: '#F0A526', paddingHorizontal: 5, paddingVertical: 2 },
+  thiefSpriteCritical: { backgroundColor: '#681C18', borderColor: '#FFEC62' },
+  thiefFace: { fontSize: 30 },
+  thiefBag: { color: '#E8BF67', fontSize: 20, fontWeight: '900' },
+  thiefSneak: { color: '#FFD868', fontSize: 7, fontWeight: '900', marginLeft: 2 },
+  roadsideDecorArt: { position: 'absolute', left: 2, bottom: 78, width: 92, height: 73, zIndex: 8 },
+  brewArtBurst: { position: 'absolute', left: '50%', top: 135, width: 120, height: 127, marginLeft: -60, zIndex: 19 },
+  customerReaction: { position: 'absolute', right: 8, bottom: 102, zIndex: 20, maxWidth: 150, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: C.green, paddingHorizontal: 6, paddingVertical: 4 },
+  customerReactionEmoji: { fontSize: 17 },
+  customerReactionText: { flexShrink: 1, color: '#3A210E', fontSize: 7, fontWeight: '900' },
   queueRoad: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 95, backgroundColor: C.road, borderTopWidth: 5, borderColor: '#B49A6E', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-evenly', paddingBottom: 5, paddingHorizontal: 4 },
   customerSlot: { width: '18%', alignItems: 'center', justifyContent: 'flex-end' },
   orderBubble: { minWidth: 28, height: 24, backgroundColor: '#FFF0BF', borderWidth: 2, borderColor: '#6F431C', alignItems: 'center', justifyContent: 'center', marginBottom: -2, zIndex: 3 },
+  orderBubblePriority: { minWidth: 40, backgroundColor: '#FFE08A', borderColor: C.orange },
   orderBubbleText: { fontSize: 12 },
   patienceTrack: { width: 34, height: 5, borderWidth: 1, borderColor: '#28180C', backgroundColor: '#4A3D32' },
   patienceFill: { height: '100%', backgroundColor: C.green2 },
   patienceLow: { backgroundColor: C.red },
   emptyQueue: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyQueueText: { color: '#EED9AC', fontSize: 9, fontWeight: '900' },
+  streakChip: { position: 'absolute', right: 8, bottom: 102, zIndex: 12, backgroundColor: '#512611', borderWidth: 2, borderColor: C.orange, paddingHorizontal: 7, paddingVertical: 4 },
+  streakChipText: { color: '#FFF0BF', fontSize: 8, fontWeight: '900' },
   sceneStats: { flexDirection: 'row', backgroundColor: '#24160D', borderTopWidth: 3, borderColor: C.wood2 },
   sceneStat: { flex: 1, paddingVertical: 6, alignItems: 'center', borderRightWidth: 1, borderColor: '#5D3A20' },
   sceneStatLabel: { color: '#A98A62', fontSize: 7, fontWeight: '900' },
@@ -670,9 +863,11 @@ const styles = StyleSheet.create({
 
   bottomNav: { flexDirection: 'row', gap: 4, alignItems: 'stretch' },
   bottomNavItem: { flex: 1, minHeight: 54, backgroundColor: '#3A210F', borderWidth: 3, borderColor: '#6F3B16', alignItems: 'center', justifyContent: 'center' },
+  bottomNavItemActive: { backgroundColor: '#6A3B12', borderColor: C.gold },
   bottomNavIcon: { fontSize: 17, color: C.gold },
   bottomNavLabel: { color: '#D7B77F', fontSize: 6.5, fontWeight: '900', marginTop: 2 },
   centerBadge: { flex: 1.35, backgroundColor: C.orange, borderWidth: 3, borderColor: '#7E2E0C', alignItems: 'center', justifyContent: 'center' },
+  centerBadgeBoost: { backgroundColor: '#8C3214', borderColor: C.gold },
   centerBadgeCup: { fontSize: 18 },
   centerBadgeText: { color: '#FFF0BF', fontSize: 7, fontWeight: '900', marginTop: 1 },
 });

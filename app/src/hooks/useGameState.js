@@ -9,18 +9,29 @@ import {
 import { LEGACY_SAVE_KEY, SAVE_BACKUP_KEY, SAVE_KEY, SAVE_RECOVERY_META_KEY } from '../game/saveRecovery';
 import { bootGameState } from '../game/bootGameState';
 import {
+  acceptPriorityOrder,
+  activateKettleBoost,
   buyTrackUpgrade,
+  cancelActiveBrew,
   claimDailyObjective,
+  claimMilestoneReward,
   claimOfflineProgress,
+  chooseServiceAction,
   dismissTutorialStep,
   getBottleneck,
   getDailyObjectives,
   getDerivedStats,
   getMilestones,
+  getServiceChoices,
   getRecommendation,
   getTutorialStep,
   getVenueProgress,
   simulateTicks,
+  prepareSessionReward,
+  resolvePendingReward,
+  shooThief,
+  startActiveBrew,
+  tapActiveBrewStage,
   unlockMenuItem,
   unlockNextVenue,
   unlockStaff,
@@ -110,7 +121,7 @@ export const useGameState = () => {
 
       if (nextStatus.match(/inactive|background/)) {
         setState((current) => {
-          const next = { ...current, lastTickAt: Date.now() };
+          const next = { ...cancelActiveBrew(current), lastTickAt: Date.now() };
           stateRef.current = next;
           persistState(next);
           return next;
@@ -130,15 +141,25 @@ export const useGameState = () => {
   const dailyObjectives = useMemo(() => getDailyObjectives(state), [state]);
   const tutorialStep = useMemo(() => getTutorialStep(state), [state]);
   const bottleneck = useMemo(() => getBottleneck(state), [state]);
+  const serviceChoices = useMemo(() => getServiceChoices(state), [state]);
 
+  const acceptPriority = useCallback(() => setState((current) => acceptPriorityOrder(current)), []);
+  const chaseThief = useCallback(() => setState((current) => shooThief(current)), []);
+  const beginActiveBrew = useCallback(() => setState((current) => startActiveBrew(current)), []);
+  const tapBrewStage = useCallback(() => setState((current) => tapActiveBrewStage(current)), []);
+  const useKettleBoost = useCallback(() => setState((current) => activateKettleBoost(current)), []);
   const buyUpgrade = useCallback((id) => setState((current) => buyTrackUpgrade(current, id)), []);
   const hireStaff = useCallback((id) => setState((current) => unlockStaff(current, id)), []);
   const buyMenuUnlock = useCallback((id) => setState((current) => unlockMenuItem(current, id)), []);
   const buyVenue = useCallback(() => setState((current) => unlockNextVenue(current)), []);
   const claimObjective = useCallback((id) => setState((current) => claimDailyObjective(current, id)), []);
+  const claimMilestone = useCallback((id) => setState((current) => claimMilestoneReward(current, id)), []);
   const dismissTutorial = useCallback((id) => setState((current) => dismissTutorialStep(current, id)), []);
   const clearOfflineCoins = useCallback(() => setOfflineCoins(0), []);
   const dismissRecoveryNotice = useCallback(() => setRecoveryNotice(''), []);
+  const chooseService = useCallback((id) => setState((current) => chooseServiceAction(current, id)), []);
+  const openSessionReward = useCallback(() => setState((current) => prepareSessionReward(current)), []);
+  const claimPendingReward = useCallback((id, multiplier = 1) => setState((current) => resolvePendingReward(current, id, multiplier)), []);
   const resetGame = useCallback(async () => {
     const fresh = createInitialState();
     stateRef.current = fresh;
@@ -158,15 +179,25 @@ export const useGameState = () => {
     dailyObjectives,
     tutorialStep,
     bottleneck,
+    serviceChoices,
     offlineCoins,
     recoveryNotice,
     clearOfflineCoins,
     dismissRecoveryNotice,
+    chooseService,
+    openSessionReward,
+    claimPendingReward,
+    acceptPriority,
+    chaseThief,
+    beginActiveBrew,
+    tapBrewStage,
+    useKettleBoost,
     buyUpgrade,
     hireStaff,
     buyMenuUnlock,
     buyVenue,
     claimObjective,
+    claimMilestone,
     dismissTutorial,
     resetGame,
     upgradeTracks,

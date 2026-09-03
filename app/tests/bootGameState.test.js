@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createInitialState, serializeStateForSave } from '../src/game/createInitialState.js';
+import { createInitialState, SAVE_SCHEMA_VERSION, serializeStateForSave } from '../src/game/createInitialState.js';
 import { bootGameState } from '../src/game/bootGameState.js';
 import { LEGACY_SAVE_KEY, SAVE_BACKUP_KEY, SAVE_KEY, SAVE_RECOVERY_META_KEY } from '../src/game/saveRecovery.js';
 
@@ -80,7 +80,7 @@ test('recovers to a fresh state and records recovery metadata when all save slot
       SAVE_RECOVERY_META_KEY,
       JSON.stringify({
         corruptedAt: 1234567890,
-        reason: 'Error: Save schema 999 is newer than supported schema 3',
+        reason: `Error: Save schema 999 is newer than supported schema ${SAVE_SCHEMA_VERSION}`,
       }),
     ],
   ]);
